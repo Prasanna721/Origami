@@ -51,12 +51,13 @@ def get_task_detail(task_name: str):
     }
 
 
-# Serve Three.js viewer as static files (must be last - catches all subpaths)
+# Serve Three.js viewer as static files at /viewer only.
+# Do NOT mount at /web — OpenEnv's built-in web interface uses /web when
+# ENABLE_WEB_INTERFACE=true (set by `openenv push` for HF Spaces deployment).
 from fastapi.staticfiles import StaticFiles
 
 viewer_dir = os.path.join(os.path.dirname(__file__), "..", "viewer")
 if os.path.isdir(viewer_dir):
-    app.mount("/web", StaticFiles(directory=viewer_dir, html=True), name="web")
     app.mount("/viewer", StaticFiles(directory=viewer_dir, html=True), name="viewer")
 
 
@@ -64,7 +65,8 @@ def main():
     """Entry point for openenv serve / uv run."""
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 7860))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":
