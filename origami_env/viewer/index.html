@@ -518,16 +518,17 @@ const TASKS = {
 };
 
 // ─── CLIENT-SIDE ANALYTICAL FOLD SOLVER ──────────────────────
-// Mirrors server's simulate.py: BFS from face 0, rotating across fold edges
+// Cumulative transform approach: each face stores (R, t) where
+// folded_pos = R * flat_pos + t. Correctly handles multiple folds.
 
 function analyticalFold(fold, creasePercent) {
   const verts = fold.vertices_coords;
   const n = verts.length;
+  const flat = new Float32Array(n * 3);
   const pos = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    pos[i*3] = verts[i][0];
-    pos[i*3+1] = verts[i][1];
-    pos[i*3+2] = 0;
+    flat[i*3] = verts[i][0]; flat[i*3+1] = verts[i][1]; flat[i*3+2] = 0;
+    pos[i*3] = verts[i][0]; pos[i*3+1] = verts[i][1]; pos[i*3+2] = 0;
   }
 
   if (Math.abs(creasePercent) < 1e-10) return pos;
@@ -538,7 +539,7 @@ function analyticalFold(fold, creasePercent) {
   const foldAngles = fold.edges_foldAngle;
   if (!faces || faces.length === 0) return pos;
 
-  // Build face adjacency: edgeKey -> [faceIdx, ...]
+  // Build face adjacency
   const faceAdj = {};
   for (let fi = 0; fi < faces.length; fi++) {
     const face = faces[fi];
@@ -550,22 +551,30 @@ function analyticalFold(fold, creasePercent) {
     }
   }
 
-  // Build crease map: edgeKey -> {angle, assignment}
+  // Build crease map
   const creaseMap = {};
   for (let i = 0; i < edges.length; i++) {
     const [v1, v2] = edges[i];
     const key = Math.min(v1,v2) + ',' + Math.max(v1,v2);
     if (assignments[i] === 'M' || assignments[i] === 'V') {
-      const angleRad = (foldAngles[i] * Math.PI / 180) * creasePercent;
-      creaseMap[key] = angleRad;
+      creaseMap[key] = (foldAngles[i] * Math.PI / 180) * creasePercent;
     }
   }
 
-  // BFS from face 0
+  // Per-face cumulative transform: folded = R * flat + t
+  // R is a 3x3 matrix stored as [r00,r01,r02, r10,r11,r12, r20,r21,r22]
+  const faceR = new Array(faces.length).fill(null);
+  const faceT = new Array(faces.length).fill(null);
+  // Face 0: identity
+  faceR[0] = [1,0,0, 0,1,0, 0,0,1];
+  faceT[0] = [0,0,0];
+
   const visited = new Array(faces.length).fill(false);
   visited[0] = true;
-  const queue = [0];
+  const placed = new Set();
+  for (const vi of faces[0]) placed.add(vi);
 
+  const queue = [0];
   while (queue.length > 0) {
     const fi = queue.shift();
     const face = faces[fi];
@@ -573,59 +582,49 @@ function analyticalFold(fold, creasePercent) {
     for (let j = 0; j < face.length; j++) {
       const v1 = face[j], v2 = face[(j+1) % face.length];
       const key = Math.min(v1,v2) + ',' + Math.max(v1,v2);
-      const adjFaces = faceAdj[key] || [];
 
-      for (const fj of adjFaces) {
+      for (const fj of (faceAdj[key] || [])) {
         if (visited[fj]) continue;
         visited[fj] = true;
         queue.push(fj);
 
         const angle = creaseMap[key] || 0;
+        let Rfj, tfj;
+
         if (Math.abs(angle) > 1e-10) {
-          // Collect all vertices to rotate (BFS through unvisited faces)
-          const vertsToRotate = new Set();
-          const subQueue = [fj];
-          const subVisited = new Set([fj]);
+          // Fold rotation around edge (v1->v2) in folded coords
+          const p1 = [pos[v1*3], pos[v1*3+1], pos[v1*3+2]];
+          const ax = [pos[v2*3]-p1[0], pos[v2*3+1]-p1[1], pos[v2*3+2]-p1[2]];
+          const axLen = Math.sqrt(ax[0]*ax[0]+ax[1]*ax[1]+ax[2]*ax[2]);
 
-          while (subQueue.length > 0) {
-            const sf = subQueue.shift();
-            for (const vi of faces[sf]) {
-              if (vi !== v1 && vi !== v2) vertsToRotate.add(vi);
-            }
-            const sFace = faces[sf];
-            for (let k = 0; k < sFace.length; k++) {
-              const sv1 = sFace[k], sv2 = sFace[(k+1) % sFace.length];
-              const sKey = Math.min(sv1,sv2) + ',' + Math.max(sv1,sv2);
-              for (const sfj of (faceAdj[sKey] || [])) {
-                if (!subVisited.has(sfj) && !visited[sfj]) {
-                  subVisited.add(sfj);
-                  subQueue.push(sfj);
-                  visited[sfj] = true;
-                }
-              }
-            }
-          }
-
-          if (vertsToRotate.size > 0) {
-            // Rotate around edge axis (v1->v2) by angle
-            const p1 = [pos[v1*3], pos[v1*3+1], pos[v1*3+2]];
-            const ax = [pos[v2*3]-p1[0], pos[v2*3+1]-p1[1], pos[v2*3+2]-p1[2]];
-            const axLen = Math.sqrt(ax[0]*ax[0] + ax[1]*ax[1] + ax[2]*ax[2]);
-            if (axLen < 1e-12) continue;
+          if (axLen < 1e-12) {
+            Rfj = faceR[fi].slice(); tfj = faceT[fi].slice();
+          } else {
             const u = [ax[0]/axLen, ax[1]/axLen, ax[2]/axLen];
+            const foldR = rodriguesMat(u, angle);
+            Rfj = matMul(foldR, faceR[fi]);
+            // t_fj = foldR * (t_fi - p1) + p1
+            const dt = [faceT[fi][0]-p1[0], faceT[fi][1]-p1[1], faceT[fi][2]-p1[2]];
+            const rdt = matVec(foldR, dt);
+            tfj = [rdt[0]+p1[0], rdt[1]+p1[1], rdt[2]+p1[2]];
+          }
+        } else {
+          Rfj = faceR[fi].slice();
+          tfj = faceT[fi].slice();
+        }
 
-            const cosA = Math.cos(angle), sinA = Math.sin(angle);
+        faceR[fj] = Rfj;
+        faceT[fj] = tfj;
 
-            for (const vi of vertsToRotate) {
-              // Translate to origin at p1
-              let dx = pos[vi*3]-p1[0], dy = pos[vi*3+1]-p1[1], dz = pos[vi*3+2]-p1[2];
-              // Rodrigues' rotation
-              const dot = dx*u[0] + dy*u[1] + dz*u[2];
-              const cx = u[1]*dz - u[2]*dy, cy = u[2]*dx - u[0]*dz, cz = u[0]*dy - u[1]*dx;
-              pos[vi*3]   = p1[0] + dx*cosA + cx*sinA + u[0]*dot*(1-cosA);
-              pos[vi*3+1] = p1[1] + dy*cosA + cy*sinA + u[1]*dot*(1-cosA);
-              pos[vi*3+2] = p1[2] + dz*cosA + cz*sinA + u[2]*dot*(1-cosA);
-            }
+        // Place unplaced vertices
+        for (const vi of faces[fj]) {
+          if (!placed.has(vi)) {
+            const fv = [flat[vi*3], flat[vi*3+1], flat[vi*3+2]];
+            const rv = matVec(Rfj, fv);
+            pos[vi*3]   = rv[0] + tfj[0];
+            pos[vi*3+1] = rv[1] + tfj[1];
+            pos[vi*3+2] = rv[2] + tfj[2];
+            placed.add(vi);
           }
         }
       }
@@ -633,6 +632,34 @@ function analyticalFold(fold, creasePercent) {
   }
 
   return pos;
+}
+
+// 3x3 rotation matrix from axis-angle (Rodrigues)
+function rodriguesMat(u, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle), t = 1 - c;
+  return [
+    c + u[0]*u[0]*t,       u[0]*u[1]*t - u[2]*s,  u[0]*u[2]*t + u[1]*s,
+    u[1]*u[0]*t + u[2]*s,  c + u[1]*u[1]*t,        u[1]*u[2]*t - u[0]*s,
+    u[2]*u[0]*t - u[1]*s,  u[2]*u[1]*t + u[0]*s,   c + u[2]*u[2]*t,
+  ];
+}
+
+// 3x3 matrix multiply (row-major flat arrays)
+function matMul(a, b) {
+  return [
+    a[0]*b[0]+a[1]*b[3]+a[2]*b[6], a[0]*b[1]+a[1]*b[4]+a[2]*b[7], a[0]*b[2]+a[1]*b[5]+a[2]*b[8],
+    a[3]*b[0]+a[4]*b[3]+a[5]*b[6], a[3]*b[1]+a[4]*b[4]+a[5]*b[7], a[3]*b[2]+a[4]*b[5]+a[5]*b[8],
+    a[6]*b[0]+a[7]*b[3]+a[8]*b[6], a[6]*b[1]+a[7]*b[4]+a[8]*b[7], a[6]*b[2]+a[7]*b[5]+a[8]*b[8],
+  ];
+}
+
+// 3x3 matrix * vec3
+function matVec(m, v) {
+  return [
+    m[0]*v[0]+m[1]*v[1]+m[2]*v[2],
+    m[3]*v[0]+m[4]*v[1]+m[5]*v[2],
+    m[6]*v[0]+m[7]*v[1]+m[8]*v[2],
+  ];
 }
 
 // ─── THREE.JS HELPERS ─────────────────────────────────────────
