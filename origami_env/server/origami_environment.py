@@ -9,6 +9,8 @@ import os
 import uuid
 from typing import Any, Dict, Optional
 
+from openenv.core.env_server.interfaces import Environment
+
 from .engine.paper import PaperState, create_flat_sheet
 from .engine.fold import apply_fold, FoldError
 from .engine.physics import simulate
@@ -22,7 +24,7 @@ from .models import OrigamiAction, OrigamiObservation, OrigamiState
 from .tasks import sample_task, get_task_by_name
 
 
-class OrigamiEnvironment:
+class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiState]):
     """
     OpenEnv-compatible environment for origami folding.
 
@@ -34,7 +36,8 @@ class OrigamiEnvironment:
 
     SUPPORTS_CONCURRENT_SESSIONS = False
 
-    def __init__(self, renders_dir: str = "renders"):
+    def __init__(self, renders_dir: str = "renders", **kwargs):
+        super().__init__(**kwargs)
         self._paper: Optional[PaperState] = None
         self._task: Optional[Dict[str, Any]] = None
         self._fold_history: list = []
@@ -109,6 +112,7 @@ class OrigamiEnvironment:
     def step(
         self,
         action: OrigamiAction | Dict[str, Any],
+        timeout_s: Optional[float] = None,
         **kwargs,
     ) -> OrigamiObservation:
         """Apply one fold, run physics, validate, render, return observation."""

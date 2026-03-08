@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "OpenEnv-compatible origami folding RL environment"
 requires-python = ">=3.10"
 dependencies = [
+    "openenv-core>=0.2.1",
     "numpy>=1.24",
     "scipy>=1.10",
     "pydantic>=2.0",

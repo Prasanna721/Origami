@@ -1,12 +1,16 @@
-"""Pydantic models: OrigamiAction, OrigamiObservation, OrigamiState."""
+"""Pydantic models: OrigamiAction, OrigamiObservation, OrigamiState.
+
+Subclasses of OpenEnv base types (Action, Observation, State).
+"""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+from openenv.core.env_server.types import Action, Observation, State
 
 
-class OrigamiAction(BaseModel):
+class OrigamiAction(Action):
     """One fold operation. Sent by the client each step."""
 
     fold_type: str = "valley"
@@ -21,15 +25,9 @@ class OrigamiAction(BaseModel):
     layer_select: str = "all"
     """'all' | 'top' | 'bottom' — which layers to fold."""
 
-    metadata: Dict[str, Any] = Field(default_factory=dict)
 
-
-class OrigamiObservation(BaseModel):
+class OrigamiObservation(Observation):
     """Everything the frontend and the LLM need. Returned by reset() and step()."""
-
-    done: bool = False
-    reward: Optional[float] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     # Task description
     task: Dict[str, Any] = Field(default_factory=dict)
@@ -50,11 +48,9 @@ class OrigamiObservation(BaseModel):
     render_urls: Dict[str, str] = Field(default_factory=dict)
 
 
-class OrigamiState(BaseModel):
+class OrigamiState(State):
     """Server-side episode tracking."""
 
-    episode_id: Optional[str] = None
-    step_count: int = 0
     task_name: str = ""
     num_folds_applied: int = 0
     is_valid: bool = True
