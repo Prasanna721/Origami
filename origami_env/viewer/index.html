@@ -1380,8 +1380,111 @@ function matVec(m, v) {
 
 const EDGE_COLORS = { M: 0xc0392b, V: 0x2471a3, B: 0x1a1816, F: 0xddd8d0, U: 0xa9a49d };
 
-// Procedural solar panel texture — photorealistic grid of PV cells
+// ─── PROCEDURAL TEXTURES ──────────────────────────────────────
 const _textureCache = {};
+
+// Simple seeded pseudo-random for repeatable noise
+function seededRand(x, y) {
+  const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+// Procedural paper texture — realistic fiber/grain
+function getPaperTexture() {
+  if (_textureCache.paper) return _textureCache.paper;
+  const sz = 512;
+  const c = document.createElement('canvas');
+  c.width = sz; c.height = sz;
+  const ctx = c.getContext('2d');
+  const imgData = ctx.createImageData(sz, sz);
+  const d = imgData.data;
+
+  for (let y = 0; y < sz; y++) {
+    for (let x = 0; x < sz; x++) {
+      const i = (y * sz + x) * 4;
+      // Base off-white with warm tone
+      let base = 245 + seededRand(x * 0.5, y * 0.5) * 8 - 4;
+      // Large-scale variation (mottled paper)
+      base += (seededRand(Math.floor(x/8), Math.floor(y/8)) - 0.5) * 12;
+      // Fine grain noise
+      base += (seededRand(x * 3.1, y * 2.7) - 0.5) * 6;
+      // Horizontal fiber streaks
+      if (seededRand(x * 0.02, Math.floor(y/2) * 7.3) > 0.92) {
+        base -= 6 + seededRand(x, y * 100) * 4;
+      }
+      // Vertical fiber streaks (less frequent)
+      if (seededRand(Math.floor(x/2) * 5.1, y * 0.03) > 0.95) {
+        base -= 4 + seededRand(x * 100, y) * 3;
+      }
+      base = Math.max(220, Math.min(255, base));
+      // Warm paper tint: slightly more red/green than blue
+      d[i]     = Math.min(255, base + 2);   // R
+      d[i + 1] = Math.min(255, base + 1);   // G
+      d[i + 2] = Math.min(255, base - 4);   // B
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.minFilter = THREE.LinearMipMapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  _textureCache.paper = tex;
+  return tex;
+}
+
+// Normal map from paper texture for subtle surface relief
+function getPaperNormalMap() {
+  if (_textureCache.paperNormal) return _textureCache.paperNormal;
+  const sz = 256;
+  const c = document.createElement('canvas');
+  c.width = sz; c.height = sz;
+  const ctx = c.getContext('2d');
+  const imgData = ctx.createImageData(sz, sz);
+  const d = imgData.data;
+
+  // Generate height field then convert to normal map
+  const h = new Float32Array(sz * sz);
+  for (let y = 0; y < sz; y++) {
+    for (let x = 0; x < sz; x++) {
+      let val = 0;
+      val += seededRand(x * 0.5, y * 0.5) * 0.3;
+      val += seededRand(Math.floor(x/4), Math.floor(y/4)) * 0.5;
+      val += seededRand(x * 2.1, y * 1.7) * 0.2;
+      h[y * sz + x] = val;
+    }
+  }
+  // Sobel-style normal extraction
+  for (let y = 0; y < sz; y++) {
+    for (let x = 0; x < sz; x++) {
+      const i = (y * sz + x) * 4;
+      const xl = h[y * sz + Math.max(0, x-1)];
+      const xr = h[y * sz + Math.min(sz-1, x+1)];
+      const yl = h[Math.max(0, y-1) * sz + x];
+      const yr = h[Math.min(sz-1, y+1) * sz + x];
+      const dx = (xr - xl) * 2.0;
+      const dy = (yr - yl) * 2.0;
+      // Normal = normalize(-dx, -dy, 1)
+      const len = Math.sqrt(dx*dx + dy*dy + 1);
+      d[i]     = Math.floor((-dx/len * 0.5 + 0.5) * 255);
+      d[i + 1] = Math.floor((-dy/len * 0.5 + 0.5) * 255);
+      d[i + 2] = Math.floor((1/len * 0.5 + 0.5) * 255);
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.minFilter = THREE.LinearMipMapLinearFilter;
+  _textureCache.paperNormal = tex;
+  return tex;
+}
+
+// Procedural solar panel texture — photorealistic grid of PV cells
 function getSolarPanelTexture() {
   if (_textureCache.solar_panel) return _textureCache.solar_panel;
   const sz = 512;
@@ -1502,9 +1605,10 @@ function buildMesh(task, creasePercent = 1) {
       emissive: skin.emissive || 0x0a1a3a,
       emissiveIntensity: skin.emissiveIntensity || 0.1,
     });
-  } else {
+  } else if (skin.color) {
+    // Custom skin color (shelter, starshade, etc.)
     mat = new THREE.MeshPhongMaterial({
-      color: skin.color || 0xfaf9f7,
+      color: skin.color,
       side: THREE.DoubleSide,
       flatShading: false,
       shininess: skin.shininess || 20,
@@ -1512,8 +1616,23 @@ function buildMesh(task, creasePercent = 1) {
       emissive: skin.emissive || 0x000000,
       emissiveIntensity: skin.emissiveIntensity || 0,
     });
+  } else {
+    // Default: realistic paper — PBR material with fiber texture + normal map
+    const paperTex = getPaperTexture();
+    const paperNorm = getPaperNormalMap();
+    mat = new THREE.MeshStandardMaterial({
+      map: paperTex,
+      normalMap: paperNorm,
+      normalScale: new THREE.Vector2(0.3, 0.3),
+      side: THREE.DoubleSide,
+      roughness: 0.85,
+      metalness: 0.0,
+      envMapIntensity: 0.2,
+    });
   }
   const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   group.add(mesh);
 
   for (let i = 0; i < fold.edges_vertices.length; i++) {
@@ -1553,16 +1672,43 @@ function setupScene(container, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(w, h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  // Soft ambient fill — slightly warm for paper
+  const ambientLight = new THREE.AmbientLight(0xfff8f0, 0.45);
   scene.add(ambientLight);
-  const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
-  dirLight1.position.set(1, 2, 3);
+
+  // Key light — casts shadows
+  const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight1.position.set(1.5, 3, 2.5);
+  dirLight1.castShadow = true;
+  dirLight1.shadow.mapSize.width = 1024;
+  dirLight1.shadow.mapSize.height = 1024;
+  dirLight1.shadow.camera.near = 0.1;
+  dirLight1.shadow.camera.far = 10;
+  dirLight1.shadow.camera.left = -2;
+  dirLight1.shadow.camera.right = 2;
+  dirLight1.shadow.camera.top = 2;
+  dirLight1.shadow.camera.bottom = -2;
+  dirLight1.shadow.bias = -0.002;
+  dirLight1.shadow.normalBias = 0.02;
+  dirLight1.shadow.radius = 3;
   scene.add(dirLight1);
-  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+
+  // Fill light — softer, no shadows
+  const dirLight2 = new THREE.DirectionalLight(0xe8e4f0, 0.35);
   dirLight2.position.set(-2, 1, -1);
   scene.add(dirLight2);
+
+  // Rim light from below-behind for paper edge glow
+  const dirLight3 = new THREE.DirectionalLight(0xfff0e0, 0.15);
+  dirLight3.position.set(0, -1, -2);
+  scene.add(dirLight3);
 
   let controls = null;
   if (opts.orbit) {
