@@ -17,6 +17,7 @@ TASKS: dict[str, dict] = {
             "edges_vertices": [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]],
             "edges_assignment": ["B", "B", "B", "B", "V"],
             "edges_foldAngle": [0, 0, 0, 0, 180],
+            "faces_vertices": [[0, 1, 2], [0, 2, 3]],
         },
     },
     "half_fold": {
@@ -25,14 +26,16 @@ TASKS: dict[str, dict] = {
         "difficulty": 1,
         "paper": {"width": 1.0, "height": 1.0},
         "target_fold": {
-            "vertices_coords": [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0.5], [1, 0.5]],
-            "edges_vertices": [
-                [0, 1], [1, 5], [5, 4], [4, 0],  # bottom half boundary
-                [4, 3], [3, 2], [2, 5],  # top half boundary
-                [4, 5],  # fold line
+            "vertices_coords": [
+                [0, 0], [1, 0], [1, 1], [0, 1], [0, 0.5], [1, 0.5],
             ],
-            "edges_assignment": ["B", "B", "B", "B", "B", "B", "B", "V"],
-            "edges_foldAngle": [0, 0, 0, 0, 0, 0, 0, 180],
+            "edges_vertices": [
+                [0, 1], [1, 5], [5, 2], [2, 3], [3, 4], [4, 0],
+                [4, 5],
+            ],
+            "edges_assignment": ["B", "B", "B", "B", "B", "B", "V"],
+            "edges_foldAngle": [0, 0, 0, 0, 0, 0, 180],
+            "faces_vertices": [[0, 1, 5, 4], [4, 5, 2, 3]],
         },
     },
     "quarter_fold": {
@@ -55,13 +58,17 @@ TASKS: dict[str, dict] = {
             ],
             "edges_assignment": [
                 "B", "B", "B", "B", "B", "B", "B", "B",
-                "V", "V",
-                "V", "V",
+                "V", "V", "V", "V",
             ],
             "edges_foldAngle": [
                 0, 0, 0, 0, 0, 0, 0, 0,
-                180, 180,
-                180, 180,
+                180, 180, 180, 180,
+            ],
+            "faces_vertices": [
+                [0, 1, 4, 3],  # bottom-left
+                [1, 2, 5, 4],  # bottom-right
+                [3, 4, 7, 6],  # top-left
+                [4, 5, 8, 7],  # top-right
             ],
         },
     },
@@ -81,16 +88,21 @@ TASKS: dict[str, dict] = {
                 # Boundary
                 [0, 1], [1, 3], [3, 5], [5, 7], [7, 6], [6, 4], [4, 2], [2, 0],
                 # Fold lines
-                [2, 3],  # first fold
-                [4, 5],  # second fold
+                [2, 3],  # first fold (valley)
+                [4, 5],  # second fold (mountain)
             ],
             "edges_assignment": [
                 "B", "B", "B", "B", "B", "B", "B", "B",
-                "V", "V",
+                "V", "M",
             ],
             "edges_foldAngle": [
                 0, 0, 0, 0, 0, 0, 0, 0,
                 180, -180,
+            ],
+            "faces_vertices": [
+                [0, 1, 3, 2],  # bottom strip
+                [2, 3, 5, 4],  # middle strip
+                [4, 5, 7, 6],  # top strip
             ],
         },
     },

@@ -15,11 +15,48 @@ app = create_app(
     max_concurrent_envs=4,
 )
 
-# Serve Three.js viewer as static files
+# Task list endpoint for the viewer
+from .tasks import TASKS
+
+
+@app.get("/tasks")
+def get_tasks():
+    """List all available tasks with their target fold data."""
+    return {
+        name: {
+            "name": task["name"],
+            "description": task["description"],
+            "difficulty": task["difficulty"],
+            "paper": task["paper"],
+            "target_fold": task["target_fold"],
+        }
+        for name, task in TASKS.items()
+    }
+
+
+@app.get("/tasks/{task_name}")
+def get_task_detail(task_name: str):
+    """Get a specific task by name."""
+    if task_name not in TASKS:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
+    task = TASKS[task_name]
+    return {
+        "name": task["name"],
+        "description": task["description"],
+        "difficulty": task["difficulty"],
+        "paper": task["paper"],
+        "target_fold": task["target_fold"],
+    }
+
+
+# Serve Three.js viewer as static files (must be last - catches all subpaths)
 from fastapi.staticfiles import StaticFiles
 
 viewer_dir = os.path.join(os.path.dirname(__file__), "..", "viewer")
 if os.path.isdir(viewer_dir):
+    app.mount("/web", StaticFiles(directory=viewer_dir, html=True), name="web")
     app.mount("/viewer", StaticFiles(directory=viewer_dir, html=True), name="viewer")
 
 

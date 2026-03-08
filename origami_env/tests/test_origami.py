@@ -98,7 +98,8 @@ class TestPhysics:
         assert np.max(np.abs(r.positions[:, 2])) < 0.01
 
     def test_fold_creates_z_displacement(self):
-        r = simulate(TRIANGLE_FOLD, crease_percent=1.0, max_steps=2000)
+        # A partial fold (90°) creates z displacement; full 180° folds flat
+        r = simulate(TRIANGLE_FOLD, crease_percent=0.5, max_steps=2000)
         z_range = r.positions[:, 2].max() - r.positions[:, 2].min()
         assert z_range > 0.1
 
@@ -108,15 +109,21 @@ class TestPhysics:
         assert dist < 0.1
 
     def test_half_fold_works(self):
+        # Full fold: top vertices should overlap bottom vertices
         r = simulate(HALF_FOLD, crease_percent=1.0, max_steps=2000)
-        z_range = r.positions[:, 2].max() - r.positions[:, 2].min()
-        assert z_range > 0.1
+        # v2=[1,1] should fold onto v1=[1,0], v3=[0,1] onto v0=[0,0]
+        dist = np.linalg.norm(r.positions[2] - r.positions[1])
+        assert dist < 0.1, f"v2 didn't fold onto v1 (dist={dist})"
 
     def test_all_tasks_fold(self):
         for name, task in TASKS.items():
             r = simulate(task["target_fold"], crease_percent=1.0, max_steps=2000)
-            z_range = r.positions[:, 2].max() - r.positions[:, 2].min()
-            assert z_range > 0.05, f"Task {name} did not fold (z_range={z_range})"
+            assert r.converged, f"Task {name} did not converge"
+            assert r.max_strain < 0.01, f"Task {name} has high strain ({r.max_strain})"
+            # Partial fold should produce z displacement
+            r_half = simulate(task["target_fold"], crease_percent=0.5)
+            z_range = r_half.positions[:, 2].max() - r_half.positions[:, 2].min()
+            assert z_range > 0.01, f"Task {name} partial fold no z (z_range={z_range})"
 
 
 # --- Shape Match ---
@@ -222,3 +229,64 @@ class TestRewards:
         scores = shape_match(good + bad, task_name="triangle")
         assert scores[0] == 20.0
         assert scores[1] == -2.0
+
+
+# --- API ---
+
+
+class TestAPI:
+    @pytest.fixture
+    def client(self):
+        from fastapi.testclient import TestClient
+
+        from server.app import app
+
+        return TestClient(app)
+
+    def test_health(self, client):
+        r = client.get("/health")
+        assert r.status_code == 200
+        assert r.json()["status"] == "healthy"
+
+    def test_tasks_endpoint(self, client):
+        r = client.get("/tasks")
+        assert r.status_code == 200
+        tasks = r.json()
+        assert "triangle" in tasks
+        assert "half_fold" in tasks
+        assert len(tasks) == 4
+
+    def test_task_detail_endpoint(self, client):
+        r = client.get("/tasks/triangle")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["name"] == "triangle"
+        assert "target_fold" in data
+
+    def test_task_not_found(self, client):
+        r = client.get("/tasks/nonexistent")
+        assert r.status_code == 404
+
+    def test_websocket_reset_step(self, client):
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "reset", "data": {"task_name": "triangle"}})
+            resp = ws.receive_json()
+            assert resp["type"] == "observation"
+            assert resp["data"]["done"] is False
+
+            ws.send_json({"type": "step", "data": {"fold_data": TRIANGLE_FOLD}})
+            resp = ws.receive_json()
+            assert resp["type"] == "observation"
+            assert resp["data"]["reward"] == 20.0
+            assert resp["data"]["done"] is True
+
+    def test_websocket_all_tasks(self, client):
+        for task_name in ("triangle", "half_fold", "quarter_fold", "letter_fold"):
+            r = client.get(f"/tasks/{task_name}")
+            fold_data = r.json()["target_fold"]
+            with client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "reset", "data": {"task_name": task_name}})
+                ws.receive_json()
+                ws.send_json({"type": "step", "data": {"fold_data": fold_data}})
+                resp = ws.receive_json()
+                assert resp["data"]["reward"] == 20.0, f"{task_name} failed"
