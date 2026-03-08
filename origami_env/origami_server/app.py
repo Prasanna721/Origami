@@ -1,28 +1,28 @@
-"""FastAPI entry point — OpenEnv create_app() + static viewer."""
+"""FastAPI entry point — OpenEnv create_app() + custom viewer."""
 
 import os
 from pathlib import Path
 
-from openenv.core import create_app
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+
+from openenv.core.env_server.http_server import create_app
 
 from .environment import OrigamiEnvironment
 from .models import OrigamiAction, OrigamiObservation
 
 app = create_app(
-    env=OrigamiEnvironment,
-    action_cls=OrigamiAction,
-    observation_cls=OrigamiObservation,
+    OrigamiEnvironment,
+    OrigamiAction,
+    OrigamiObservation,
     env_name="origami_env",
-    max_concurrent_envs=4,
 )
 
-# Task list endpoints (registered BEFORE static mount so they take priority)
 from .tasks import TASKS
 
 
 @app.get("/tasks")
 def get_tasks():
-    """List all available tasks with their target fold data."""
     return {
         name: {
             "name": task["name"],
@@ -37,7 +37,6 @@ def get_tasks():
 
 @app.get("/tasks/{task_name}")
 def get_task_detail(task_name: str):
-    """Get a specific task by name."""
     if task_name not in TASKS:
         from fastapi import HTTPException
 
@@ -52,16 +51,17 @@ def get_task_detail(task_name: str):
     }
 
 
-# Serve Three.js viewer — static mount at / must come LAST (catch-all)
-from fastapi.staticfiles import StaticFiles
+_VIEWER_DIR = Path(__file__).resolve().parent.parent / "viewer"
+if _VIEWER_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(_VIEWER_DIR), html=True), name="renderer")
+else:
 
-viewer_dir = Path(__file__).resolve().parent.parent / "viewer"
-if viewer_dir.is_dir():
-    app.mount("/", StaticFiles(directory=str(viewer_dir), html=True), name="viewer")
+    @app.get("/", response_class=HTMLResponse)
+    def no_viewer():
+        return HTMLResponse("<h3>Viewer not found</h3><p>API docs at <a href='/docs'>/docs</a></p>")
 
 
 def main():
-    """Entry point for openenv serve / uv run."""
     import uvicorn
 
     port = int(os.environ.get("PORT", 8000))
