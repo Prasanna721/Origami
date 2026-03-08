@@ -185,8 +185,8 @@ class TestEnvironment:
 
 
 class TestTasks:
-    def test_four_tasks(self):
-        assert len(list_tasks()) == 4
+    def test_all_tasks(self):
+        assert len(list_tasks()) == 7
 
     def test_get_task(self):
         task = get_task("triangle")
@@ -260,7 +260,7 @@ class TestAPI:
         tasks = r.json()
         assert "triangle" in tasks
         assert "half_fold" in tasks
-        assert len(tasks) == 4
+        assert len(tasks) == 7
 
     def test_task_detail_endpoint(self, client):
         r = client.get("/tasks/triangle")

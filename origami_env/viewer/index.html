@@ -733,6 +733,9 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .card:nth-child(2) { animation-delay: 0.1s; }
 .card:nth-child(3) { animation-delay: 0.15s; }
 .card:nth-child(4) { animation-delay: 0.2s; }
+.card:nth-child(5) { animation-delay: 0.25s; }
+.card:nth-child(6) { animation-delay: 0.3s; }
+.card:nth-child(7) { animation-delay: 0.35s; }
 
 .section {
   animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
@@ -1169,6 +1172,71 @@ const TASKS = {
     },
     strain: 0.0,
   },
+  solar_panel: {
+    name: 'Solar Panel',
+    description: 'Deployable solar panel array',
+    domain: 'space',
+    difficulty: 2,
+    similarity: 1.0,
+    fold: {
+      vertices_coords: [[0,0],[1,0],[0,0.25],[1,0.25],[0,0.5],[1,0.5],[0,0.75],[1,0.75],[0,1],[1,1]],
+      edges_vertices: [
+        [0,1],[1,3],[3,5],[5,7],[7,9],[9,8],[8,6],[6,4],[4,2],[2,0],
+        [2,3],[4,5],[6,7]
+      ],
+      edges_assignment: ['B','B','B','B','B','B','B','B','B','B','M','V','M'],
+      edges_foldAngle: [0,0,0,0,0,0,0,0,0,0,-180,180,-180],
+      faces_vertices: [[0,1,3,2],[2,3,5,4],[4,5,7,6],[6,7,9,8]],
+    },
+    strain: 0.0,
+    skin: {
+      texture: 'solar_panel',
+      color: 0x1a3a6a,
+      specular: 0x4488cc,
+      shininess: 90,
+      emissive: 0x0a1a3a,
+      emissiveIntensity: 0.1,
+    },
+  },
+  shelter: {
+    name: 'Shelter',
+    description: 'Emergency A-frame tent',
+    domain: 'architecture',
+    difficulty: 2,
+    similarity: 1.0,
+    fold: {
+      vertices_coords: [[0,0],[1,0],[0,0.2],[1,0.2],[0,0.4],[1,0.4],[0,0.6],[1,0.6],[0,0.8],[1,0.8],[0,1],[1,1]],
+      edges_vertices: [
+        [0,1],[1,3],[3,5],[5,7],[7,9],[9,11],[11,10],[10,8],[8,6],[6,4],[4,2],[2,0],
+        [2,3],[4,5],[6,7],[8,9]
+      ],
+      edges_assignment: ['B','B','B','B','B','B','B','B','B','B','B','B','V','M','V','M'],
+      edges_foldAngle: [0,0,0,0,0,0,0,0,0,0,0,0,90,-90,90,-90],
+      faces_vertices: [[0,1,3,2],[2,3,5,4],[4,5,7,6],[6,7,9,8],[8,9,11,10]],
+    },
+    strain: 0.0,
+    skin: { color: 0xe8a84c, specular: 0x332200, shininess: 10, emissive: 0x4a2800, emissiveIntensity: 0.06 },
+  },
+  starshade: {
+    name: 'Starshade',
+    description: 'NASA flasher petal fold',
+    domain: 'space',
+    difficulty: 3,
+    similarity: 1.0,
+    fold: {
+      vertices_coords: [[0,0],[0.5,0],[1,0],[1,0.5],[1,1],[0.5,1],[0,1],[0,0.5],[0.5,0.5]],
+      edges_vertices: [
+        [0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,0],
+        [8,0],[8,2],[8,4],[8,6],  // corner diagonals = V folds (petal hinges)
+        [8,1],[8,3],[8,5],[8,7],  // midpoint radials = no fold (petals stay flat)
+      ],
+      edges_assignment: ['B','B','B','B','B','B','B','B','V','V','V','V','B','B','B','B'],
+      edges_foldAngle: [0,0,0,0,0,0,0,0,90,90,90,90,0,0,0,0],
+      faces_vertices: [[8,0,1],[8,1,2],[8,2,3],[8,3,4],[8,4,5],[8,5,6],[8,6,7],[8,7,0]],
+    },
+    strain: 0.0,
+    skin: { color: 0x1a1a2e, specular: 0xd4af37, shininess: 60, emissive: 0x0a0a1e, emissiveIntensity: 0.15 },
+  },
 };
 
 // ─── CLIENT-SIDE ANALYTICAL FOLD SOLVER ──────────────────────
@@ -1312,6 +1380,88 @@ function matVec(m, v) {
 
 const EDGE_COLORS = { M: 0xc0392b, V: 0x2471a3, B: 0x1a1816, F: 0xddd8d0, U: 0xa9a49d };
 
+// Procedural solar panel texture — photorealistic grid of PV cells
+const _textureCache = {};
+function getSolarPanelTexture() {
+  if (_textureCache.solar_panel) return _textureCache.solar_panel;
+  const sz = 512;
+  const c = document.createElement('canvas');
+  c.width = sz; c.height = sz;
+  const ctx = c.getContext('2d');
+
+  // Deep blue-black base (monocrystalline silicon)
+  ctx.fillStyle = '#0a1628';
+  ctx.fillRect(0, 0, sz, sz);
+
+  // Grid of solar cells (8x8)
+  const cells = 8, pad = 3, gap = 2;
+  const cellW = (sz - gap * (cells + 1)) / cells;
+  const cellH = (sz - gap * (cells + 1)) / cells;
+
+  for (let row = 0; row < cells; row++) {
+    for (let col = 0; col < cells; col++) {
+      const x = gap + col * (cellW + gap);
+      const y = gap + row * (cellH + gap);
+
+      // Cell gradient — slight color variation per cell for realism
+      const hueShift = (Math.sin(row * 3.7 + col * 2.3) * 0.5 + 0.5);
+      const r = Math.floor(10 + hueShift * 15);
+      const g = Math.floor(30 + hueShift * 25);
+      const b = Math.floor(80 + hueShift * 50);
+      const grad = ctx.createLinearGradient(x, y, x + cellW, y + cellH);
+      grad.addColorStop(0, `rgb(${r},${g},${b})`);
+      grad.addColorStop(0.5, `rgb(${r+8},${g+12},${b+20})`);
+      grad.addColorStop(1, `rgb(${r+3},${g+5},${b+10})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(x + pad, y + pad, cellW - pad*2, cellH - pad*2);
+
+      // Thin silver bus bars (vertical lines on each cell)
+      ctx.strokeStyle = 'rgba(180,195,210,0.5)';
+      ctx.lineWidth = 0.6;
+      const bars = 5;
+      for (let b2 = 1; b2 < bars; b2++) {
+        const bx = x + pad + (cellW - pad*2) * b2 / bars;
+        ctx.beginPath();
+        ctx.moveTo(bx, y + pad);
+        ctx.lineTo(bx, y + cellH - pad);
+        ctx.stroke();
+      }
+
+      // Two thicker horizontal bus bars
+      ctx.strokeStyle = 'rgba(192,200,210,0.7)';
+      ctx.lineWidth = 1.2;
+      for (let h = 1; h <= 2; h++) {
+        const by = y + pad + (cellH - pad*2) * h / 3;
+        ctx.beginPath();
+        ctx.moveTo(x + pad, by);
+        ctx.lineTo(x + cellW - pad, by);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Silver frame border
+  ctx.strokeStyle = '#a0aab4';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(1, 1, sz - 2, sz - 2);
+
+  // Subtle glass reflection overlay
+  const reflGrad = ctx.createLinearGradient(0, 0, sz, sz * 0.6);
+  reflGrad.addColorStop(0, 'rgba(200,220,255,0.12)');
+  reflGrad.addColorStop(0.4, 'rgba(200,220,255,0.03)');
+  reflGrad.addColorStop(1, 'rgba(200,220,255,0)');
+  ctx.fillStyle = reflGrad;
+  ctx.fillRect(0, 0, sz, sz);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.minFilter = THREE.LinearMipMapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  _textureCache.solar_panel = tex;
+  return tex;
+}
+
 function buildMesh(task, creasePercent = 1) {
   const fold = task.fold;
   const group = new THREE.Group();
@@ -1330,13 +1480,39 @@ function buildMesh(task, creasePercent = 1) {
   geo.setIndex(indices);
   geo.computeVertexNormals();
 
-  const mat = new THREE.MeshPhongMaterial({
-    color: 0xfaf9f7,
-    side: THREE.DoubleSide,
-    flatShading: false,
-    shininess: 20,
-    specular: 0x222222,
-  });
+  // Generate UVs from flat vertex coords (x,y mapped to 0-1)
+  const verts = fold.vertices_coords;
+  const uvs = new Float32Array(verts.length * 2);
+  for (let i = 0; i < verts.length; i++) {
+    uvs[i * 2] = verts[i][0];
+    uvs[i * 2 + 1] = verts[i][1];
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+  const skin = task.skin || {};
+  let mat;
+  if (skin.texture === 'solar_panel') {
+    const tex = getSolarPanelTexture();
+    mat = new THREE.MeshPhongMaterial({
+      map: tex,
+      side: THREE.DoubleSide,
+      flatShading: false,
+      shininess: skin.shininess || 90,
+      specular: skin.specular || 0x4488cc,
+      emissive: skin.emissive || 0x0a1a3a,
+      emissiveIntensity: skin.emissiveIntensity || 0.1,
+    });
+  } else {
+    mat = new THREE.MeshPhongMaterial({
+      color: skin.color || 0xfaf9f7,
+      side: THREE.DoubleSide,
+      flatShading: false,
+      shininess: skin.shininess || 20,
+      specular: skin.specular || 0x222222,
+      emissive: skin.emissive || 0x000000,
+      emissiveIntensity: skin.emissiveIntensity || 0,
+    });
+  }
   const mesh = new THREE.Mesh(geo, mat);
   group.add(mesh);
 
@@ -1453,10 +1629,19 @@ function initGrid() {
   for (const [key, task] of Object.entries(TASKS)) {
     const card = document.createElement('div');
     card.className = 'card';
+    const DOMAIN_STYLES = {
+      medical: { color: '#2471a3', bg: '#eaf2f8' },
+      architecture: { color: '#e67e22', bg: '#fdf2e9' },
+      space: { color: '#8e44ad', bg: '#f4ecf7' },
+    };
+    const domainBadge = task.domain && DOMAIN_STYLES[task.domain]
+      ? ` <span style="font-size:10px;font-weight:500;padding:1px 6px;border-radius:3px;color:${DOMAIN_STYLES[task.domain].color};background:${DOMAIN_STYLES[task.domain].bg};margin-left:6px">${task.domain}</span>`
+      : '';
+
     card.innerHTML = `
       <div class="card-canvas" id="card-${key}"></div>
       <div class="card-info">
-        <div class="card-name">${task.name}</div>
+        <div class="card-name">${task.name}${domainBadge}</div>
         <div class="card-desc">${task.description} \u00b7 difficulty ${task.difficulty}</div>
         <div class="card-score">
           <div class="score-bar-bg"><div class="score-bar-fill" style="width:${task.similarity * 100}%"></div></div>
