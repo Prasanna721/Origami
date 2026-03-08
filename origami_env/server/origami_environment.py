@@ -1,11 +1,11 @@
 """OrigamiEnvironment — the OpenEnv Environment class.
 
-Wraps engine + renderer. Does NOT contain origami logic itself.
-Calls engine.fold, engine.physics, engine.validation, engine.metrics, renderer.
+Wraps engine. Does NOT contain origami logic itself.
+Calls engine.fold, engine.physics, engine.validation, engine.metrics.
+No server-side rendering — paper_state in observation IS the render data.
 """
 from __future__ import annotations
 
-import os
 import uuid
 from typing import Any, Dict, Optional
 
@@ -17,9 +17,6 @@ from .engine.physics import simulate
 from .engine.validation import validate_state
 from .engine.metrics import compute_all_metrics
 from .engine.materials import MATERIALS, Material
-from .renderer.screenshots import capture_step, capture_episode_summary
-from .renderer.recorder import record_fold_animation
-from .renderer.exporter import save_fold_json
 from .models import OrigamiAction, OrigamiObservation, OrigamiState
 from .tasks import sample_task, get_task_by_name
 
@@ -30,13 +27,17 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
 
     Each episode:
       1. reset() creates a flat sheet with a sampled task
-      2. step(action) applies one fold, runs physics, validates, renders
+      2. step(action) applies one fold, runs physics, validates, computes metrics
       3. "stop" action or max_folds ends the episode with final reward
+
+    No server-side rendering. The observation contains paper_state (FOLD-compatible
+    geometry data) which Three.js renders in the browser, and metrics which reward
+    functions read during training.
     """
 
     SUPPORTS_CONCURRENT_SESSIONS = False
 
-    def __init__(self, renders_dir: str = "renders", **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._paper: Optional[PaperState] = None
         self._task: Optional[Dict[str, Any]] = None
@@ -46,8 +47,6 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
         self._error: Optional[str] = None
         self._episode_id: Optional[str] = None
         self._step_count: int = 0
-        self._episode_dir: Optional[str] = None
-        self._renders_dir = renders_dir
         self._total_reward: float = 0.0
 
     # ── reset ──────────────────────────────────────────────────
@@ -58,18 +57,12 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
         episode_id: Optional[str] = None,
         **kwargs,
     ) -> OrigamiObservation:
-        """Reset environment: sample task, create flat sheet, render initial state."""
+        """Reset environment: sample task, create flat sheet, compute initial metrics."""
         self._episode_id = episode_id or str(uuid.uuid4())
         self._step_count = 0
         self._fold_history = []
         self._error = None
         self._total_reward = 0.0
-
-        # Create episode render directory
-        self._episode_dir = os.path.join(
-            self._renders_dir, f"ep_{self._episode_id[:8]}"
-        )
-        os.makedirs(self._episode_dir, exist_ok=True)
 
         # Get task
         task_name = kwargs.get("task_name")
@@ -102,10 +95,7 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
         self._validation = validate_state(self._paper)
         self._metrics = compute_all_metrics(self._paper, self._task, self._validation)
 
-        # Render initial state
-        render_urls = capture_step(self._paper, 0, self._episode_dir)
-
-        return self._make_observation(done=False, reward=None, render_urls=render_urls)
+        return self._make_observation(done=False, reward=None)
 
     # ── step ───────────────────────────────────────────────────
 
@@ -115,7 +105,7 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
         timeout_s: Optional[float] = None,
         **kwargs,
     ) -> OrigamiObservation:
-        """Apply one fold, run physics, validate, render, return observation."""
+        """Apply one fold, run physics, validate, compute metrics, return observation."""
         # Accept dict input for convenience
         if isinstance(action, dict):
             action = OrigamiAction(**action)
@@ -141,7 +131,7 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
             self._fold_history.append({**fold_dict, "step": self._step_count})
         except FoldError as e:
             self._error = str(e)
-            return self._make_observation(done=True, reward=-5.0, render_urls={})
+            return self._make_observation(done=True, reward=-5.0)
 
         # Run physics
         try:
@@ -155,9 +145,6 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
         # Compute metrics
         self._metrics = compute_all_metrics(self._paper, self._task, self._validation)
 
-        # Render this step
-        render_urls = capture_step(self._paper, self._step_count, self._episode_dir)
-
         # Check if episode should end
         done = False
 
@@ -166,13 +153,10 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
         if self._step_count >= max_folds:
             done = True
 
-        # Self-intersections are tracked as a penalty metric, not an auto-end.
-        # The simplified triangle-triangle test is too aggressive for subdivided meshes.
-
         if done:
             return self._finalize_episode()
 
-        return self._make_observation(done=False, reward=None, render_urls=render_urls)
+        return self._make_observation(done=False, reward=None)
 
     # ── state property ─────────────────────────────────────────
 
@@ -190,50 +174,10 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
     # ── finalize ───────────────────────────────────────────────
 
     def _finalize_episode(self) -> OrigamiObservation:
-        """End episode: compute final reward, generate summary + animation."""
+        """End episode: compute final reward."""
         reward = self._compute_reward()
         self._total_reward = reward
-
-        render_urls = capture_step(self._paper, self._step_count, self._episode_dir)
-
-        # Episode summary image
-        try:
-            summary_path = capture_episode_summary(
-                self._paper, self._fold_history,
-                self._task or {}, self._metrics, self._episode_dir,
-            )
-            render_urls["episode_summary"] = summary_path
-        except Exception:
-            pass
-
-        # Fold animation GIF (non-critical)
-        try:
-            mat = self._task.get("material", "paper") if self._task else "paper"
-            if isinstance(mat, str):
-                mat_obj = MATERIALS.get(mat, MATERIALS["paper"])
-            else:
-                mat_obj = MATERIALS["paper"]
-
-            initial_paper = create_flat_sheet(
-                self._task["width"], self._task["height"], mat_obj,
-            )
-            gif_path = record_fold_animation(
-                initial_paper, self._fold_history,
-                os.path.join(self._episode_dir, "animation.gif"),
-            )
-            render_urls["episode_gif"] = gif_path
-        except Exception:
-            pass
-
-        # FOLD JSON export
-        try:
-            fold_path = os.path.join(self._episode_dir, "state.fold")
-            save_fold_json(self._paper, fold_path, self._fold_history)
-            render_urls["fold_json"] = fold_path
-        except Exception:
-            pass
-
-        return self._make_observation(done=True, reward=reward, render_urls=render_urls)
+        return self._make_observation(done=True, reward=reward)
 
     # ── helpers ────────────────────────────────────────────────
 
@@ -241,7 +185,6 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
         self,
         done: bool,
         reward: Optional[float],
-        render_urls: Dict[str, str],
     ) -> OrigamiObservation:
         return OrigamiObservation(
             done=done,
@@ -251,7 +194,6 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
             metrics=self._metrics,
             fold_history=self._fold_history,
             error=self._error,
-            render_urls=render_urls,
         )
 
     def _compute_reward(self) -> float:

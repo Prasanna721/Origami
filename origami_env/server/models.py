@@ -27,12 +27,16 @@ class OrigamiAction(Action):
 
 
 class OrigamiObservation(Observation):
-    """Everything the frontend and the LLM need. Returned by reset() and step()."""
+    """Everything the viewer and the LLM need. Returned by reset() and step().
+
+    No render_urls — paper_state contains all geometry data for Three.js
+    to render directly. During training, reward functions read metrics.
+    """
 
     # Task description
     task: Dict[str, Any] = Field(default_factory=dict)
 
-    # Paper state (FOLD-compatible)
+    # Paper state (FOLD-compatible geometry + physics data)
     paper_state: Dict[str, Any] = Field(default_factory=dict)
 
     # All computed metrics
@@ -44,9 +48,6 @@ class OrigamiObservation(Observation):
     # Error message if fold failed
     error: Optional[str] = None
 
-    # URLs to rendered images
-    render_urls: Dict[str, str] = Field(default_factory=dict)
-
 
 class OrigamiState(State):
     """Server-side episode tracking."""
@@ -55,4 +56,3 @@ class OrigamiState(State):
     num_folds_applied: int = 0
     is_valid: bool = True
     total_reward: float = 0.0
-    current_fold_percent: float = 1.0

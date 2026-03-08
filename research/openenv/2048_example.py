@@ -3,8 +3,7 @@ Reference Implementation: OpenEnv + GRPO Reinforcement Learning for 2048 Game
 ==============================================================================
 
 Extracted from the Unsloth / OpenEnv notebook:
-  https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/
-  OpenEnv_gpt_oss_(20B)_Reinforcement_Learning_2048_Game.ipynb
+  https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/OpenEnv_gpt_oss_(20B)_Reinforcement_Learning_2048_Game.ipynb
 
 This file contains ALL code cells from the notebook, organized into sections.
 It serves as a reference for how to build an OpenEnv-based RL environment
@@ -32,7 +31,6 @@ REWARD STRUCTURE:
   - strategy_succeeds:  +20.0 if reaches 2048, +2.0 if function runs but doesn't win,
                         -1.0 on timeout, -3.0 on exception, 0 if function broken
 """
-
 
 # =============================================================================
 # CELL 1: Installation (pip installs - shown for reference, not executable here)
@@ -70,6 +68,7 @@ elif importlib.util.find_spec("unsloth") is None:
 
 import subprocess, sys, os
 from pathlib import Path
+
 # sys.path.insert(0, '.')  # Add OpenEnv root for envs module
 # sys.path.insert(0, './src')
 # working_directory = str(Path.cwd().parent.absolute() / "OpenEnv")
@@ -83,13 +82,13 @@ from unsloth import FastLanguageModel
 import torch
 
 max_seq_length = 768  # Can increase for longer RL output
-lora_rank = 4         # Larger rank = smarter, but slower
+lora_rank = 4  # Larger rank = smarter, but slower
 
 model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name = "unsloth/gpt-oss-20b",
-    load_in_4bit = True,
-    max_seq_length = max_seq_length,
-    offload_embedding = True,  # Offload embeddings to save more VRAM
+    model_name="unsloth/gpt-oss-20b",
+    load_in_4bit=True,
+    max_seq_length=max_seq_length,
+    offload_embedding=True,  # Offload embeddings to save more VRAM
 )
 
 
@@ -98,14 +97,19 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 # =============================================================================
 model = FastLanguageModel.get_peft_model(
     model,
-    r = lora_rank,  # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
-    target_modules = [
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "gate_proj", "up_proj", "down_proj",
+    r=lora_rank,  # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
     ],
-    lora_alpha = lora_rank * 2,  # *2 speeds up training
-    use_gradient_checkpointing = "unsloth",  # Reduces memory usage
-    random_state = 3407,
+    lora_alpha=lora_rank * 2,  # *2 speeds up training
+    use_gradient_checkpointing="unsloth",  # Reduces memory usage
+    random_state=3407,
 )
 
 
@@ -135,12 +139,13 @@ environment = {
 # Augment Unsloth's OpenEnv creation function
 import functools
 from unsloth import is_port_open, launch_openenv
+
 launch_openenv = functools.partial(
     launch_openenv,
-    working_directory = working_directory,
-    server = server,
-    environment = environment,
-    openenv_class = OpenSpielEnv,
+    working_directory=working_directory,
+    server=server,
+    environment=environment,
+    openenv_class=OpenSpielEnv,
 )
 
 
@@ -164,6 +169,7 @@ current_state = result.observation
 # =============================================================================
 import numpy as np
 
+
 def convert_to_board(current_state):
     n = len(current_state.info_state)
     size = int(np.sqrt(n))
@@ -175,12 +181,15 @@ def convert_to_board(current_state):
 # =============================================================================
 # CELL 9: Pretty-print the 2048 board (collapsible in notebook)
 # =============================================================================
-def render_board(obs, colors: bool = True, border: bool = True, dot_for_zero: bool = True) -> str:
+def render_board(
+    obs, colors: bool = True, border: bool = True, dot_for_zero: bool = True
+) -> str:
     """
     Pretty-print the board with colors that scale from 0 up to self.target.
     Uses ANSI 256-color codes (works in most terminals). Set colors=False to disable.
     """
     import math
+
     b, size = convert_to_board(obs)
     mx = max((max(row) for row in b), default=0)
     cell_w = max(3, len(str(mx)))
@@ -188,7 +197,27 @@ def render_board(obs, colors: bool = True, border: bool = True, dot_for_zero: bo
     RESET = "\x1b[0m"
 
     # A smooth-ish gradient from cool -> warm
-    GRAD = [33, 39, 45, 51, 50, 49, 48, 47, 46, 82, 118, 154, 190, 226, 220, 214, 208, 202, 196]
+    GRAD = [
+        33,
+        39,
+        45,
+        51,
+        50,
+        49,
+        48,
+        47,
+        46,
+        82,
+        118,
+        154,
+        190,
+        226,
+        220,
+        214,
+        208,
+        202,
+        196,
+    ]
     ZERO_FG = 239  # dim gray
 
     def color_code(v: int) -> str:
@@ -219,9 +248,13 @@ def render_board(obs, colors: bool = True, border: bool = True, dot_for_zero: bo
         content = "\u2502".join(fmt(v) for v in b[r])
         rows.append(("\u2502" + content + "\u2502") if border else content)
         if border:
-            rows.append(hline("\u2514" if r == size - 1 else "\u251c",
-                            "\u2534" if r == size - 1 else "\u253c",
-                            "\u2518" if r == size - 1 else "\u2524"))
+            rows.append(
+                hline(
+                    "\u2514" if r == size - 1 else "\u251c",
+                    "\u2534" if r == size - 1 else "\u253c",
+                    "\u2518" if r == size - 1 else "\u2524",
+                )
+            )
     return "\n".join(rows)
 
 
@@ -241,6 +274,7 @@ print(render_board(current_state))
 from typing import Callable
 from unsloth import execute_with_time_limit
 import itertools
+
 
 def _execute_strategy(strategy, current_state: OpenSpielObservation):
     """
@@ -285,6 +319,7 @@ def execute_strategy(strategy: Callable, current_state: OpenSpielObservation):
 # =============================================================================
 def always_move_left(board):
     return 3
+
 
 # Reset OpenEnv to an initial state!
 port, openenv_process = launch_openenv(port, openenv_process)
@@ -385,17 +420,18 @@ print(prompt)
 # =============================================================================
 text = tokenizer.apply_chat_template(
     [{"role": "user", "content": prompt}],
-    tokenize = False,
-    add_generation_prompt = True,
-    reasoning_effort = "low",
+    tokenize=False,
+    add_generation_prompt=True,
+    reasoning_effort="low",
 )
 
 from transformers import TextStreamer
+
 _ = model.generate(
     **tokenizer(text, return_tensors="pt").to("cuda"),
-    temperature = 1.0,
-    max_new_tokens = 512,
-    streamer = TextStreamer(tokenizer, skip_prompt=False),
+    temperature=1.0,
+    max_new_tokens=512,
+    streamer=TextStreamer(tokenizer, skip_prompt=False),
 )
 
 
@@ -412,7 +448,7 @@ def extract_function(text):
         second = text.find("```", first)
         fx = text[first:second].strip()
         fx = fx.removeprefix("python\n")
-        fx = fx[fx.find("def"):]
+        fx = fx[fx.find("def") :]
         if fx.startswith("def strategy(board):"):
             return fx
     return None
@@ -478,6 +514,7 @@ import numpy as np
 global PRINTER
 PRINTER = 0
 
+
 def strategy_succeeds(completions, **kwargs):
     """
     Reward: Does the strategy actually play 2048 successfully?
@@ -522,7 +559,7 @@ def strategy_succeeds(completions, **kwargs):
             if if_done:
                 scores.append(20.0)  # Success - massively reward!
             else:
-                scores.append(2.0)   # Failed but function works!
+                scores.append(2.0)  # Failed but function works!
         except TimeoutError as e:
             print("Timeout")
             scores.append(-1.0)  # Failed with timeout
@@ -537,18 +574,23 @@ def strategy_succeeds(completions, **kwargs):
 # =============================================================================
 from datasets import Dataset
 
-dataset = Dataset.from_list([
-    {
-        "prompt": [{"role": "user", "content": prompt.strip()}],
-        "answer": 0,
-        "reasoning_effort": "low",
-    }
-] * 1000)
+dataset = Dataset.from_list(
+    [
+        {
+            "prompt": [{"role": "user", "content": prompt.strip()}],
+            "answer": 0,
+            "reasoning_effort": "low",
+        }
+    ]
+    * 1000
+)
 
-maximum_length = len(tokenizer.apply_chat_template(
-    [{"role": "user", "content": prompt.strip()}],
-    add_generation_prompt=True,
-))
+maximum_length = len(
+    tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt.strip()}],
+        add_generation_prompt=True,
+    )
+)
 print(f"Prompt token length: {maximum_length}")
 
 
@@ -561,23 +603,23 @@ max_completion_length = max_seq_length - max_prompt_length
 from trl import GRPOConfig, GRPOTrainer
 
 training_args = GRPOConfig(
-    temperature = 1.0,
-    learning_rate = 2e-4,
-    weight_decay = 0.001,
-    warmup_ratio = 0.1,
-    lr_scheduler_type = "linear",
-    optim = "adamw_8bit",
-    logging_steps = 1,
-    per_device_train_batch_size = 1,
-    gradient_accumulation_steps = 1,   # Increase to 4 for smoother training
-    num_generations = 2,               # Decrease if out of memory
-    max_prompt_length = max_prompt_length,
-    max_completion_length = max_completion_length,
+    temperature=1.0,
+    learning_rate=2e-4,
+    weight_decay=0.001,
+    warmup_ratio=0.1,
+    lr_scheduler_type="linear",
+    optim="adamw_8bit",
+    logging_steps=1,
+    per_device_train_batch_size=1,
+    gradient_accumulation_steps=1,  # Increase to 4 for smoother training
+    num_generations=2,  # Decrease if out of memory
+    max_prompt_length=max_prompt_length,
+    max_completion_length=max_completion_length,
     # num_train_epochs = 1,            # Set to 1 for a full training run
-    max_steps = 600,
-    save_steps = 100,
-    report_to = "trackio",             # Can use Weights & Biases, TrackIO
-    output_dir = "outputs",
+    max_steps=600,
+    save_steps=100,
+    report_to="trackio",  # Can use Weights & Biases, TrackIO
+    output_dir="outputs",
 )
 
 
@@ -585,15 +627,15 @@ training_args = GRPOConfig(
 # CELL 24: Create GRPO Trainer and Train
 # =============================================================================
 trainer = GRPOTrainer(
-    model = model,
-    processing_class = tokenizer,
-    reward_funcs = [
-        function_works,       # Reward 1: Is it valid Python?
-        no_cheating,          # Reward 2: Only stdlib imports?
-        strategy_succeeds,    # Reward 3: Does it actually play 2048?
+    model=model,
+    processing_class=tokenizer,
+    reward_funcs=[
+        function_works,  # Reward 1: Is it valid Python?
+        no_cheating,  # Reward 2: Only stdlib imports?
+        strategy_succeeds,  # Reward 3: Does it actually play 2048?
     ],
-    args = training_args,
-    train_dataset = dataset,
+    args=training_args,
+    train_dataset=dataset,
 )
 
 # Start training! (~5 hours for 600 steps on T4)
@@ -606,17 +648,18 @@ trainer.train()
 # =============================================================================
 text = tokenizer.apply_chat_template(
     [{"role": "user", "content": prompt}],
-    tokenize = False,
-    add_generation_prompt = True,
-    reasoning_effort = "low",
+    tokenize=False,
+    add_generation_prompt=True,
+    reasoning_effort="low",
 )
 
 from transformers import TextStreamer
+
 _ = model.generate(
     **tokenizer(text, return_tensors="pt").to("cuda"),
-    temperature = 1.0,
-    max_new_tokens = 1024,
-    streamer = TextStreamer(tokenizer, skip_prompt=False),
+    temperature=1.0,
+    max_new_tokens=1024,
+    streamer=TextStreamer(tokenizer, skip_prompt=False),
 )
 
 
@@ -627,10 +670,16 @@ _ = model.generate(
 if False:
     model.save_pretrained_merged("finetuned_model", tokenizer, save_method="mxfp4")
 if False:
-    model.push_to_hub_merged("repo_id/repo_name", tokenizer, token="hf...", save_method="mxfp4")
+    model.push_to_hub_merged(
+        "repo_id/repo_name", tokenizer, token="hf...", save_method="mxfp4"
+    )
 
 # Merge and push to hub in 16bit
 if False:
-    model.save_pretrained_merged("finetuned_model", tokenizer, save_method="merged_16bit")
+    model.save_pretrained_merged(
+        "finetuned_model", tokenizer, save_method="merged_16bit"
+    )
 if False:
-    model.push_to_hub_merged("hf/gpt-oss-finetune", tokenizer, save_method="merged_16bit", token="")
+    model.push_to_hub_merged(
+        "hf/gpt-oss-finetune", tokenizer, save_method="merged_16bit", token=""
+    )
