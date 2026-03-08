@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import WebSocket
+from fastapi import Request, WebSocket
 from openenv.core.env_server.http_server import create_app
 
 from .origami_environment import OrigamiEnvironment
@@ -29,6 +29,26 @@ broadcast = TrainingBroadcastServer()
 async def training_ws(websocket: WebSocket):
     """Spectator WebSocket for live training grid viewer."""
     await broadcast.connect_spectator(websocket)
+
+
+# ── Pattern loading + examples ─────────────────────────────────
+
+@app.post("/load_pattern")
+async def load_pattern(request: Request):
+    """Load a crease pattern from SVG or FOLD content."""
+    data = await request.json()
+    format = data.get("format", "fold")
+    content = data.get("content", "")
+    env = OrigamiEnvironment()
+    obs = env.load_pattern(format, content)
+    return obs.model_dump()
+
+
+@app.get("/examples")
+async def list_examples():
+    """Return list of bundled SVG/FOLD examples."""
+    from .engine.svg_importer import list_bundled_examples
+    return list_bundled_examples()
 
 
 # ── Serve Three.js viewers as static files ────────────────────

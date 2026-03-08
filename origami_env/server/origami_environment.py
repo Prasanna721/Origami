@@ -196,6 +196,49 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
             error=self._error,
         )
 
+    # ── load_pattern ────────────────────────────────────────────
+
+    def load_pattern(self, format: str, content: str) -> OrigamiObservation:
+        """Load a crease pattern from SVG or FOLD content."""
+        if format == "svg":
+            from .engine.svg_importer import parse_svg
+            self._paper = parse_svg(content)
+        elif format == "fold":
+            import json
+            data = json.loads(content)
+            self._paper = PaperState.from_fold_json(data)
+
+        self._fold_history = []
+        self._step_count = 0
+        self._error = None
+        self._task = {
+            "name": "custom",
+            "width": self._paper.width,
+            "height": self._paper.height,
+        }
+        self._validation = validate_state(self._paper)
+        self._metrics = compute_all_metrics(self._paper, self._task, self._validation)
+        return self._make_observation(done=False, reward=None)
+
+    # ── animate ───────────────────────────────────────────────
+
+    def animate(self, fold_percent: float) -> OrigamiObservation:
+        """Re-run physics with given fold_percent (0=flat, 1=fully folded)."""
+        if self._paper is None:
+            return self._make_observation(done=False, reward=None)
+        # Reset to rest positions
+        paper_copy = self._paper.copy()
+        paper_copy.vertices_coords = paper_copy.rest_positions.copy()
+        # Simulate with fold_percent
+        paper_copy = simulate(paper_copy, fold_percent=fold_percent)
+        # Update current paper
+        self._paper = paper_copy
+        self._validation = validate_state(self._paper)
+        self._metrics = compute_all_metrics(self._paper, self._task, self._validation)
+        return self._make_observation(done=False, reward=None)
+
+    # ── reward ────────────────────────────────────────────────
+
     def _compute_reward(self) -> float:
         """Compute episode reward from metrics."""
         m = self._metrics

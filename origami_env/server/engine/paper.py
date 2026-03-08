@@ -26,7 +26,7 @@ class PaperState:
     rest_positions: np.ndarray           # (N, 3) flat sheet positions (strain reference)
     strain_per_vertex: np.ndarray        # (N,) per-vertex Cauchy strain
     energy: dict = field(default_factory=lambda: {
-        "total": 0.0, "bar": 0.0, "facet": 0.0, "fold": 0.0,
+        "total": 0.0, "bar": 0.0, "facet": 0.0, "fold": 0.0, "face": 0.0,
     })
 
     # ── Layers ────────────────────────────────────────
@@ -40,6 +40,9 @@ class PaperState:
     width: float = 1.0
     height: float = 1.0
     fold_count: int = 0
+
+    # ── Cache ─────────────────────────────────────────
+    _cached_triangulated_faces: Optional[list] = field(default=None, repr=False)
 
     # ── Properties ────────────────────────────────────
 
@@ -74,11 +77,19 @@ class PaperState:
 
     @property
     def triangulated_faces(self) -> list[list[int]]:
-        """Ear-clipping triangulation of all polygon faces."""
-        triangles = []
-        for face in self.faces_vertices:
-            triangles.extend(_triangulate_face(face, self.vertices_coords))
-        return triangles
+        """Ear-clipping triangulation of all polygon faces (cached)."""
+        if self._cached_triangulated_faces is None:
+            triangles = []
+            for face in self.faces_vertices:
+                triangles.extend(_triangulate_face(face, self.vertices_coords))
+            self._cached_triangulated_faces = triangles
+        return self._cached_triangulated_faces
+
+    def __setattr__(self, name, value):
+        """Invalidate triangulation cache when faces_vertices changes."""
+        super().__setattr__(name, value)
+        if name == "faces_vertices":
+            super().__setattr__("_cached_triangulated_faces", None)
 
     # ── Serialization ─────────────────────────────────
 
@@ -98,19 +109,54 @@ class PaperState:
         return result
 
     @classmethod
-    def from_fold_json(cls, data: dict, material: Optional[Material] = None) -> PaperState:
-        """Import from FOLD JSON dict."""
+    def from_fold_json(
+        cls,
+        data: dict,
+        material: Optional[Material] = None,
+        source: str = "auto",
+    ) -> PaperState:
+        """Import from FOLD JSON dict.
+
+        Parameters
+        ----------
+        data : dict
+            FOLD-format JSON dict.
+        material : Material, optional
+            Override material.
+        source : str
+            ``"auto"`` (default) auto-detects OrigamiSimulator FOLD files,
+            ``"origami_simulator"`` forces the coord-swap path,
+            any other value skips detection.
+        """
         coords = np.array(data["vertices_coords"], dtype=np.float64)
         if coords.ndim == 2 and coords.shape[1] == 2:
             coords = np.hstack([coords, np.zeros((len(coords), 1))])
 
+        # ── OrigamiSimulator coordinate swap detection ────────
+        is_origami_sim = source == "origami_simulator"
+        if source == "auto" and not is_origami_sim:
+            creator = data.get("file_creator", "")
+            if "origami simulator" in creator.lower():
+                is_origami_sim = True
+            elif len(coords) > 0:
+                # Heuristic: all Y near zero but Z is non-zero
+                y_near_zero = np.allclose(coords[:, 1], 0.0, atol=1e-6)
+                z_nonzero = not np.allclose(coords[:, 2], 0.0, atol=1e-6)
+                if y_near_zero and z_nonzero:
+                    is_origami_sim = True
+
+        if is_origami_sim:
+            # OrigamiSimulator uses [x, y, z] where y=up; we want [x, z, y]
+            coords = coords[:, [0, 2, 1]]
+
         edges = np.array(data["edges_vertices"], dtype=np.int32)
         assignments = data.get("edges_assignment", ["U"] * len(edges))
 
+        # Handle both "edges_foldAngle" (singular) and "edges_foldAngles" (plural, OrigamiSimulator compat)
         fold_angles = np.zeros(len(edges), dtype=np.float64)
-        if "edges_foldAngle" in data:
-            raw = data["edges_foldAngle"]
-            for i, a in enumerate(raw):
+        raw_angles = data.get("edges_foldAngle") or data.get("edges_foldAngles")
+        if raw_angles is not None:
+            for i, a in enumerate(raw_angles):
                 fold_angles[i] = float(a) if a is not None else 0.0
 
         faces = data.get("faces_vertices", [])
@@ -144,6 +190,8 @@ class PaperState:
             "faces_vertices": [list(f) for f in self.faces_vertices],
             "edges_assignment": list(self.edges_assignment),
             "edges_foldAngle": self.edges_foldAngle.tolist(),
+            "rest_positions": self.rest_positions.tolist(),
+            "triangulated_faces": self.triangulated_faces,
             "num_vertices": self.num_vertices,
             "num_edges": self.num_edges,
             "num_faces": self.num_faces,
@@ -175,6 +223,7 @@ class PaperState:
             width=self.width,
             height=self.height,
             fold_count=self.fold_count,
+            _cached_triangulated_faces=None,
         )
 
 

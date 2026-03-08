@@ -1200,3 +1200,119 @@ Click [Back to Grid] → remove "fullscreen" class → shrink back
 - [x] Test: registry snapshot has 4 episodes after batch ✓
 - [x] Test: live WebSocket broadcast — 22 msgs, all 8 types, 4 resets, 9 updates, 4 dones ✓
 - [x] Test: fullscreen toggle — code review verified: click→openFullscreen, Back/Esc→close, 2D+3D+metrics render
+
+---
+
+## 16. Deep Research: OrigamiSimulator Alignment Analysis
+
+### 16.1 FUNDAMENTAL FINDING: Two Different Folding Paradigms
+
+**OrigamiSimulator (physics-driven)**:
+1. Load crease pattern (SVG/FOLD) — all vertices start flat
+2. Set target fold angles for each crease edge
+3. Animate `creasePercent` from 0 → 1
+4. Physics simulation (bar-and-hinge) drives vertices toward folded state
+5. **Never modifies topology** — no new vertices/edges/faces created
+
+**Our system (geometry-driven)**:
+1. Start with flat sheet
+2. LLM generates a fold action (fold line + angle)
+3. `apply_fold()` splits faces at fold line, inserts vertices/edges, rotates via quaternion
+4. Physics `simulate()` runs after each fold to settle
+5. **Modifies topology** every fold — new vertices, edges, faces
+
+**Implication for RL**: Our approach is correct for RL (immediate geometric result of an action).
+But the physics must be good enough that the settled state matches what OrigamiSimulator would produce.
+
+### 16.2 Data Format: SVG Encoding Convention
+
+OrigamiSimulator SVGs encode crease patterns via stroke color + opacity:
+
+| Stroke Color | Assignment | Fold Convention |
+|---|---|---|
+| `#000000` (black) | B | Boundary |
+| `#FF0000` (red) | M | Mountain: angle = -opacity × 180° |
+| `#0000FF` (blue) | V | Valley: angle = +opacity × 180° |
+| `#00FF00` (green) | C | Cut edge |
+| `#FFFF00` (yellow) | F | Facet/triangulation |
+| `#FF00FF` (magenta) | U | Hinge/unassigned |
+
+Example: `<line opacity="0.5" stroke="#0000FF" ...>` = Valley fold at 90° (0.5 × 180)
+
+### 16.3 Coordinate System Mismatch
+
+| | OrigamiSimulator | Our System |
+|---|---|---|
+| Flat sheet plane | XZ-plane (Y=0) | XY-plane (Z=0) |
+| "Up" axis | Y | Z |
+| Vertex format | `[x, 0, z]` flat | `[x, y, 0]` flat |
+| Three.js mapping | direct | swap Y↔Z |
+
+**Action needed**: Coordinate swap on FOLD import/export to be compatible.
+
+### 16.4 Physics Gaps (Critical)
+
+**Gap 1: Face Stiffness Forces (MISSING)**
+OrigamiSimulator has per-triangle angle preservation forces — each triangle compares its 3 current
+interior angles to nominal (rest) angles and applies restoring forces. This prevents mesh collapse
+and shearing during folding. **We do NOT have this.** Our only face constraint is facet hinges
+(dihedral springs on "F" edges), which is not the same thing.
+
+**Gap 2: Crease Force Distribution**
+Theirs: Forces on the 4 nodes of a crease use proper projection coefficients based on where
+the perpendicular from wing tip lands on the crease edge.
+Ours: Forces on hinge nodes split 50/50, which is less accurate.
+
+**Gap 3: Adaptive Timestep**
+Theirs: `dt = 0.9 / (2π × maxNaturalFreq)` where freq = `sqrt(K/mass)`.
+Ours: Fixed `dt = 0.005`.
+
+**Gap 4: Beam-Level Velocity Damping**
+Theirs: Each beam has `D = dampingPercent × 2 × sqrt(K × minMass)` — critical damping per beam.
+Ours: Global position-based Verlet damping `(1 - 0.15) × velocity`.
+
+### 16.5 Default Parameters Comparison
+
+| Parameter | OrigamiSimulator | Our System |
+|---|---|---|
+| Axial stiffness | 20 | 70 (scale) |
+| Crease stiffness | 0.7 | 0.7 (scale) |
+| Facet/panel stiffness | 0.7 | 0.2 (scale) |
+| Face stiffness | 0.2 | N/A (missing) |
+| Damping | 0.45 | 0.15 |
+| Steps per frame | 100 | 100 (reduced from 500) |
+| Timestep | adaptive | 0.005 fixed |
+
+### 16.6 FOLD Format Compatibility
+
+Our `PaperState.from_fold_json()` and `to_fold_json()` are mostly compatible with FOLD spec.
+Issues to address:
+- Y↔Z coordinate swap needed for OrigamiSimulator FOLD files
+- Our null handling for `edges_foldAngle` converts to 0.0 (correct)
+- We compute faces from edges if missing (they require `faces_vertices`)
+
+### 16.7 Action Items (Priority Order)
+
+**Phase 1: Verify Data Compatibility**
+- [ ] Load OrigamiSimulator SVG examples into our system (add SVG parser)
+- [ ] Load FOLD exports from OrigamiSimulator and render in our viewer
+- [ ] Verify the crease patterns match visually (2D view)
+- [ ] Fix coordinate system (Y↔Z swap on import)
+
+**Phase 2: Fix Physics**
+- [ ] Add face stiffness forces (triangle angle preservation) — biggest gap
+- [ ] Fix crease force distribution (proper projection coefficients)
+- [ ] Implement adaptive timestep
+- [ ] Add per-beam velocity damping
+- [ ] Match their default parameters more closely
+
+**Phase 3: Viewer Alignment**
+- [ ] Load static FOLD/SVG files in viewer and verify rendering matches OrigamiSimulator
+- [ ] Show fold animation (creasePercent 0→1) in viewer
+- [ ] Verify strain colors, edge rendering, mesh quality match
+
+**Phase 4: RL Environment Alignment**
+- [ ] Ensure environment produces observations that render correctly
+- [ ] Verify that fold operations produce topologically correct FOLD data
+- [ ] Validate that RL-generated folds can be loaded back and viewed
+- [ ] Test: load example → fold → export → reimport → same result

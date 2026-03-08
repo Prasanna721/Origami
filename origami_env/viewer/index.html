@@ -6,51 +6,321 @@
 <title>Origami RL — Viewer</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; }
-
-.app { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr auto auto; height: 100vh; gap: 2px; }
-
-header { grid-column: 1 / -1; background: #16213e; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; }
-header h1 { font-size: 18px; font-weight: 600; color: #e94560; }
-header .status { font-size: 12px; color: #888; }
-header .status.connected { color: #4ade80; }
-
-.panel { background: #16213e; border-radius: 4px; overflow: hidden; position: relative; }
-.panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #888; padding: 8px 12px; background: #0f3460; }
-
-#crease-panel { min-height: 300px; }
-#crease-canvas { width: 100%; height: calc(100% - 30px); }
-
-#three-panel { min-height: 300px; }
-#three-container { width: 100%; height: calc(100% - 30px); }
-
-.controls { grid-column: 1 / -1; background: #16213e; padding: 10px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.controls label { font-size: 11px; color: #888; margin-right: 4px; }
-.controls select, .controls input, .controls button {
-  background: #0f3460; border: 1px solid #333; color: #e0e0e0; padding: 5px 10px;
-  border-radius: 3px; font-size: 12px;
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #fafafa;
+  color: #1a1a1a;
+  line-height: 1.5;
 }
-.controls button { cursor: pointer; background: #e94560; border: none; font-weight: 600; }
-.controls button:hover { background: #c73e54; }
-.controls button.secondary { background: #0f3460; border: 1px solid #444; }
-.controls .spacer { flex: 1; }
 
-.metrics { grid-column: 1 / -1; background: #16213e; padding: 10px 16px; display: flex; gap: 12px; flex-wrap: wrap; }
-.metric-card { background: #0f3460; border-radius: 4px; padding: 8px 14px; min-width: 120px; }
-.metric-card .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; }
-.metric-card .value { font-size: 18px; font-weight: 700; color: #e0e0e0; margin-top: 2px; }
-.metric-card .value.good { color: #4ade80; }
-.metric-card .value.bad { color: #e94560; }
-.metric-card .value.warn { color: #fbbf24; }
+.app {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100vh;
+  gap: 0;
+}
 
-#error-bar { grid-column: 1 / -1; background: #e94560; color: white; padding: 8px 16px; font-size: 12px; display: none; }
+/* ── Header ──────────────────────────────────────── */
+header {
+  grid-column: 1 / -1;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+header h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: -0.01em;
+}
+
+header h1 span {
+  color: #3b82f6;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-badge {
+  font-size: 12px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d1d5db;
+  transition: background 0.3s;
+}
+
+.status-dot.connected { background: #22c55e; }
+
+/* ── Error bar ───────────────────────────────────── */
+#error-bar {
+  grid-column: 1 / -1;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 8px 24px;
+  font-size: 13px;
+  display: none;
+}
+
+#error-bar.success {
+  background: #f0fdf4;
+  border-bottom-color: #bbf7d0;
+  color: #16a34a;
+}
+
+/* ── Panels ──────────────────────────────────────── */
+.panel {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel:first-of-type { border-right: none; }
+
+.panel-title {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+#crease-canvas {
+  flex: 1;
+  width: 100%;
+  display: block;
+}
+
+#three-container {
+  flex: 1;
+  width: 100%;
+}
+
+/* ── Controls ────────────────────────────────────── */
+.controls-bar {
+  grid-column: 1 / -1;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  padding: 12px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-group label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.control-group select,
+.control-group input[type="number"] {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #1a1a1a;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.control-group select:focus,
+.control-group input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.control-group input[type="number"] { width: 60px; }
+
+.control-group input[type="range"] {
+  width: 100px;
+  accent-color: #3b82f6;
+}
+
+.control-group .range-val {
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.spacer { flex: 1; }
+
+button {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+
+button.primary {
+  background: #3b82f6;
+  color: #ffffff;
+}
+button.primary:hover { background: #2563eb; }
+
+button.secondary {
+  background: #ffffff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+button.secondary:hover { background: #f9fafb; border-color: #9ca3af; }
+
+button.ghost {
+  background: transparent;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
+}
+button.ghost:hover { background: #f3f4f6; color: #374151; }
+
+/* ── File loading ────────────────────────────────── */
+.file-input { display: none; }
+
+/* ── Examples dropdown ───────────────────────────── */
+.examples-wrapper {
+  position: relative;
+}
+
+.examples-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 4px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  display: none;
+  z-index: 20;
+}
+
+.examples-dropdown.open { display: block; }
+
+.examples-dropdown .example-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #374151;
+  background: none;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.examples-dropdown .example-item:last-child { border-bottom: none; }
+.examples-dropdown .example-item:hover { background: #f3f4f6; color: #3b82f6; }
+
+.examples-dropdown .empty-msg {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* ── Metrics ─────────────────────────────────────── */
+.metrics-bar {
+  grid-column: 1 / -1;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  padding: 10px 24px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.metric-card {
+  background: #f9fafb;
+  border: 1px solid #f3f4f6;
+  border-radius: 6px;
+  padding: 6px 12px;
+  min-width: 100px;
+}
+
+.metric-card .label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+}
+
+.metric-card .value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-card .value.good { color: #16a34a; }
+.metric-card .value.bad { color: #dc2626; }
+.metric-card .value.warn { color: #d97706; }
+
+/* ── Responsive ──────────────────────────────────── */
+@media (max-width: 768px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto auto 300px 300px auto auto; }
+  .panel:first-of-type { border-right: 1px solid #e5e7eb; }
+  .controls-bar { padding: 10px 12px; gap: 8px; }
+}
 </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <h1>ORIGAMI RL ENVIRONMENT</h1>
-    <span id="status" class="status">Disconnected</span>
+    <h1>Origami <span>RL</span></h1>
+    <div class="header-right">
+      <div class="status-badge">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-label">Disconnected</span>
+      </div>
+    </div>
   </header>
 
   <div id="error-bar"></div>
@@ -65,40 +335,67 @@ header .status.connected { color: #4ade80; }
     <div id="three-container"></div>
   </div>
 
-  <div class="controls">
-    <label>Task</label>
-    <select id="task-select">
-      <option value="half_fold">half_fold</option>
-      <option value="quarter_fold">quarter_fold</option>
-      <option value="letter_fold">letter_fold</option>
-      <option value="map_fold">map_fold</option>
-      <option value="solar_panel">solar_panel</option>
-      <option value="shelter_wall">shelter_wall</option>
-      <option value="stent">stent</option>
-    </select>
+  <div class="controls-bar">
+    <div class="control-group">
+      <label>Task</label>
+      <select id="task-select">
+        <option value="half_fold">half_fold</option>
+        <option value="quarter_fold">quarter_fold</option>
+        <option value="letter_fold">letter_fold</option>
+        <option value="map_fold">map_fold</option>
+        <option value="solar_panel">solar_panel</option>
+        <option value="shelter_wall">shelter_wall</option>
+        <option value="stent">stent</option>
+      </select>
+    </div>
 
-    <button id="btn-reset">Reset</button>
+    <button class="primary" id="btn-reset">Reset</button>
+
+    <div class="control-group">
+      <label>Fold %</label>
+      <input type="range" id="fold-pct" min="0" max="100" value="100">
+      <span class="range-val" id="fold-pct-val">100%</span>
+    </div>
 
     <div class="spacer"></div>
 
-    <label>Type</label>
-    <select id="fold-type">
-      <option value="valley">Valley</option>
-      <option value="mountain">Mountain</option>
-    </select>
+    <div class="control-group examples-wrapper">
+      <button class="ghost" id="btn-examples">Examples</button>
+      <div class="examples-dropdown" id="examples-dropdown"></div>
+    </div>
 
-    <label>Line X1</label><input id="lx1" type="number" value="0" min="0" max="1" step="0.1" style="width:55px">
-    <label>Y1</label><input id="ly1" type="number" value="0.5" min="0" max="1" step="0.1" style="width:55px">
-    <label>X2</label><input id="lx2" type="number" value="1" min="0" max="1" step="0.1" style="width:55px">
-    <label>Y2</label><input id="ly2" type="number" value="0.5" min="0" max="1" step="0.1" style="width:55px">
+    <input type="file" id="file-svg" accept=".svg" class="file-input">
+    <input type="file" id="file-fold" accept=".fold,.json" class="file-input">
+    <button class="ghost" id="btn-load-svg">Load SVG</button>
+    <button class="ghost" id="btn-load-fold">Load FOLD</button>
 
-    <label>Angle</label><input id="fold-angle" type="number" value="180" min="0" max="180" step="10" style="width:55px">
+    <div class="spacer"></div>
 
-    <button id="btn-step">Fold</button>
-    <button id="btn-stop" class="secondary">Stop (End)</button>
+    <div class="control-group">
+      <label>Type</label>
+      <select id="fold-type">
+        <option value="valley">Valley</option>
+        <option value="mountain">Mountain</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>X1</label><input id="lx1" type="number" value="0" min="0" max="1" step="0.1">
+      <label>Y1</label><input id="ly1" type="number" value="0.5" min="0" max="1" step="0.1">
+      <label>X2</label><input id="lx2" type="number" value="1" min="0" max="1" step="0.1">
+      <label>Y2</label><input id="ly2" type="number" value="0.5" min="0" max="1" step="0.1">
+    </div>
+
+    <div class="control-group">
+      <label>Angle</label>
+      <input id="fold-angle" type="number" value="180" min="0" max="180" step="10">
+    </div>
+
+    <button class="primary" id="btn-step">Fold</button>
+    <button class="secondary" id="btn-stop">Stop</button>
   </div>
 
-  <div class="metrics" id="metrics-bar"></div>
+  <div class="metrics-bar" id="metrics-bar"></div>
 </div>
 
 <script type="importmap">
@@ -120,7 +417,7 @@ let currentObs = null;
 // ── Three.js setup ─────────────────────────────────────────
 const container = document.getElementById('three-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1a2e);
+scene.background = new THREE.Color(0xfafafa);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
 camera.position.set(0.5, 1.5, 2.0);
@@ -133,10 +430,13 @@ controls.target.set(0.5, 0.5, 0);
 controls.enableDamping = true;
 
 // Lights
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(2, 3, 2);
 scene.add(dirLight);
+const fillLight = new THREE.DirectionalLight(0xeef2ff, 0.3);
+fillLight.position.set(-2, 1, -1);
+scene.add(fillLight);
 
 // Mesh group
 let meshGroup = new THREE.Group();
@@ -167,23 +467,34 @@ const ctx = creaseCanvas.getContext('2d');
 
 function resizeCrease() {
   const panel = document.getElementById('crease-panel');
-  creaseCanvas.width = panel.clientWidth;
-  creaseCanvas.height = panel.clientHeight - 30;
+  const dpr = window.devicePixelRatio || 1;
+  const w = panel.clientWidth;
+  const h = panel.clientHeight - 36;
+  creaseCanvas.width = w * dpr;
+  creaseCanvas.height = h * dpr;
+  creaseCanvas.style.width = w + 'px';
+  creaseCanvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (currentObs) drawCreasePattern(currentObs.paper_state);
 }
 window.addEventListener('resize', resizeCrease);
 setTimeout(resizeCrease, 100);
 
-const EDGE_COLORS = { M: '#e74c3c', V: '#3498db', B: '#e0e0e0', F: '#444', U: '#666' };
-const EDGE_WIDTHS = { M: 2.5, V: 2.5, B: 3, F: 0.5, U: 1 };
+const EDGE_COLORS = { M: '#dc2626', V: '#3b82f6', B: '#374151', F: '#d1d5db', U: '#d1d5db' };
+const EDGE_WIDTHS = { M: 2, V: 2, B: 2.5, F: 0.5, U: 0.8 };
 
 function drawCreasePattern(ps) {
   if (!ps || !ps.vertices_coords) return;
-  const w = creaseCanvas.width;
-  const h = creaseCanvas.height;
+  const w = creaseCanvas.width / (window.devicePixelRatio || 1);
+  const h = creaseCanvas.height / (window.devicePixelRatio || 1);
   ctx.clearRect(0, 0, w, h);
 
-  const verts = ps.vertices_coords;
+  // Light background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+
+  // Use rest_positions for 2D rendering if available, otherwise vertices_coords
+  const coords2d = ps.rest_positions || ps.vertices_coords;
   const sheetW = ps.width || 1;
   const sheetH = ps.height || 1;
   const margin = 40;
@@ -194,13 +505,9 @@ function drawCreasePattern(ps) {
   function tx(v) { return ox + v[0] * scale; }
   function ty(v) { return oy + (sheetH - v[1]) * scale; }
 
-  // Use rest_positions if available for 2D, otherwise vertices_coords
-  const coords2d = verts;
-
   // Draw edges
   const edges = ps.edges_vertices || [];
   const assignments = ps.edges_assignment || [];
-  // Draw F edges first, then M/V/B on top
   const order = ['F', 'U', 'V', 'M', 'B'];
   for (const asgn of order) {
     for (let i = 0; i < edges.length; i++) {
@@ -208,6 +515,7 @@ function drawCreasePattern(ps) {
       const [v1, v2] = edges[i];
       const p1 = coords2d[v1];
       const p2 = coords2d[v2];
+      if (!p1 || !p2) continue;
       ctx.beginPath();
       ctx.moveTo(tx(p1), ty(p1));
       ctx.lineTo(tx(p2), ty(p2));
@@ -222,22 +530,29 @@ function drawCreasePattern(ps) {
   }
 
   // Draw vertices
+  ctx.fillStyle = '#9ca3af';
   for (const v of coords2d) {
+    if (!v) continue;
     ctx.beginPath();
-    ctx.arc(tx(v), ty(v), 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#888';
+    ctx.arc(tx(v), ty(v), 1.5, 0, Math.PI * 2);
     ctx.fill();
   }
 
   // Legend
-  ctx.font = '11px sans-serif';
+  ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
   let ly = 20;
-  for (const [label, color] of [['Mountain', '#e74c3c'], ['Valley', '#3498db'], ['Boundary', '#e0e0e0']]) {
-    ctx.fillStyle = color;
-    ctx.fillRect(w - 100, ly - 8, 16, 3);
-    ctx.fillStyle = '#888';
-    ctx.fillText(label, w - 80, ly);
-    ly += 16;
+  for (const [label, color, dash] of [['Mountain', '#dc2626', [8,3,2,3]], ['Valley', '#3b82f6', [6,3]], ['Boundary', '#374151', []]]) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash(dash);
+    ctx.beginPath();
+    ctx.moveTo(w - 110, ly - 4);
+    ctx.lineTo(w - 88, ly - 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#6b7280';
+    ctx.fillText(label, w - 82, ly);
+    ly += 18;
   }
 }
 
@@ -246,7 +561,12 @@ function updateMesh(ps) {
   if (!ps || !ps.vertices_coords) return;
 
   // Clear old mesh
-  while (meshGroup.children.length) meshGroup.remove(meshGroup.children[0]);
+  while (meshGroup.children.length) {
+    const c = meshGroup.children[0];
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) c.material.dispose();
+    meshGroup.remove(c);
+  }
 
   const verts = ps.vertices_coords;
   const faces = ps.faces_vertices || [];
@@ -254,11 +574,16 @@ function updateMesh(ps) {
   const edges = ps.edges_vertices || [];
   const assignments = ps.edges_assignment || [];
 
-  // Triangulate faces and build index buffer
-  const indices = [];
-  for (const face of faces) {
-    for (let i = 1; i < face.length - 1; i++) {
-      indices.push(face[0], face[i], face[i + 1]);
+  // Use triangulated_faces from server if available, otherwise fan-triangulate
+  let indices;
+  if (ps.triangulated_faces && ps.triangulated_faces.length > 0) {
+    indices = ps.triangulated_faces.flat();
+  } else {
+    indices = [];
+    for (const face of faces) {
+      for (let i = 1; i < face.length - 1; i++) {
+        indices.push(face[0], face[i], face[i + 1]);
+      }
     }
   }
 
@@ -266,18 +591,18 @@ function updateMesh(ps) {
   const positions = new Float32Array(verts.length * 3);
   for (let i = 0; i < verts.length; i++) {
     positions[i * 3] = verts[i][0];
-    positions[i * 3 + 1] = verts[i][2]; // Z up → Y up for Three.js
-    positions[i * 3 + 2] = -verts[i][1]; // Y → -Z
+    positions[i * 3 + 1] = verts[i][2] || 0;
+    positions[i * 3 + 2] = -(verts[i][1] || 0);
   }
 
-  // Strain → vertex colors (blue=0 → red=max)
+  // Strain -> vertex colors (light blue=0 -> red=max)
   const maxStrain = Math.max(...strain, 0.0001);
   const colors = new Float32Array(verts.length * 3);
   for (let i = 0; i < verts.length; i++) {
     const t = Math.min(strain[i] / maxStrain, 1.0);
-    colors[i * 3] = 0.2 + 0.8 * t;       // R
-    colors[i * 3 + 1] = 0.4 * (1 - t);   // G
-    colors[i * 3 + 2] = 0.9 * (1 - t);   // B
+    colors[i * 3]     = 0.85 + 0.15 * t;   // R
+    colors[i * 3 + 1] = 0.88 - 0.52 * t;   // G
+    colors[i * 3 + 2] = 0.95 - 0.82 * t;   // B
   }
 
   // Build geometry
@@ -292,8 +617,8 @@ function updateMesh(ps) {
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     side: THREE.DoubleSide,
-    roughness: 0.7,
-    metalness: 0.1,
+    roughness: 0.65,
+    metalness: 0.05,
     flatShading: false,
   });
 
@@ -301,14 +626,14 @@ function updateMesh(ps) {
   meshGroup.add(mesh);
 
   // Draw crease edges
-  const edgeColors = { M: 0xe74c3c, V: 0x3498db, B: 0xaaaaaa };
+  const edgeColors = { M: 0xdc2626, V: 0x3b82f6, B: 0x6b7280 };
   for (let i = 0; i < edges.length; i++) {
     const asgn = assignments[i];
     if (!(asgn in edgeColors)) continue;
     const [v1, v2] = edges[i];
     const pts = [
-      new THREE.Vector3(verts[v1][0], verts[v1][2], -verts[v1][1]),
-      new THREE.Vector3(verts[v2][0], verts[v2][2], -verts[v2][1]),
+      new THREE.Vector3(verts[v1][0], verts[v1][2] || 0, -(verts[v1][1] || 0)),
+      new THREE.Vector3(verts[v2][0], verts[v2][2] || 0, -(verts[v2][1] || 0)),
     ];
     const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
     const lineMat = new THREE.LineBasicMaterial({
@@ -346,24 +671,23 @@ function updateMetrics(obs) {
 // ── WebSocket ──────────────────────────────────────────────
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // Connect to /ws on the same host (OpenEnv WebSocket)
   const wsUrl = `${proto}//${location.host}/ws`;
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    document.getElementById('status').textContent = 'Connected';
-    document.getElementById('status').className = 'status connected';
+    document.getElementById('status-label').textContent = 'Connected';
+    document.getElementById('status-dot').classList.add('connected');
   };
 
   ws.onclose = () => {
-    document.getElementById('status').textContent = 'Disconnected';
-    document.getElementById('status').className = 'status';
+    document.getElementById('status-label').textContent = 'Disconnected';
+    document.getElementById('status-dot').classList.remove('connected');
     setTimeout(connect, 2000);
   };
 
   ws.onerror = () => {
-    document.getElementById('status').textContent = 'Error';
-    document.getElementById('status').className = 'status';
+    document.getElementById('status-label').textContent = 'Error';
+    document.getElementById('status-dot').classList.remove('connected');
   };
 
   ws.onmessage = (evt) => {
@@ -398,8 +722,11 @@ function handleObservation(obs) {
   updateMetrics(obs);
 
   if (obs.done) {
-    showError(`Episode ended. Reward: ${obs.reward !== null ? obs.reward.toFixed(2) : 'N/A'}`);
-    document.getElementById('error-bar').style.background = obs.reward > 0 ? '#4ade80' : '#e94560';
+    const bar = document.getElementById('error-bar');
+    bar.textContent = `Episode ended. Reward: ${obs.reward !== null ? obs.reward.toFixed(2) : 'N/A'}`;
+    bar.style.display = 'block';
+    bar.className = obs.reward > 0 ? 'success' : '';
+    bar.id = 'error-bar';
   }
 }
 
@@ -407,20 +734,25 @@ function showError(msg) {
   const bar = document.getElementById('error-bar');
   bar.textContent = msg;
   bar.style.display = 'block';
+  bar.className = '';
 }
 
 function hideError() {
-  document.getElementById('error-bar').style.display = 'none';
-  document.getElementById('error-bar').style.background = '#e94560';
+  const bar = document.getElementById('error-bar');
+  bar.style.display = 'none';
+  bar.className = '';
 }
 
 // ── Controls ───────────────────────────────────────────────
+
+// Reset
 document.getElementById('btn-reset').addEventListener('click', () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   const taskName = document.getElementById('task-select').value;
   ws.send(JSON.stringify({ type: 'reset', task_name: taskName }));
 });
 
+// Fold step
 document.getElementById('btn-step').addEventListener('click', () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({
@@ -437,6 +769,7 @@ document.getElementById('btn-step').addEventListener('click', () => {
   }));
 });
 
+// Stop
 document.getElementById('btn-stop').addEventListener('click', () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({
@@ -448,6 +781,133 @@ document.getElementById('btn-stop').addEventListener('click', () => {
       layer_select: 'all',
     },
   }));
+});
+
+// Fold % slider
+const foldPctSlider = document.getElementById('fold-pct');
+const foldPctVal = document.getElementById('fold-pct-val');
+foldPctSlider.addEventListener('input', () => {
+  foldPctVal.textContent = foldPctSlider.value + '%';
+});
+
+// Load SVG file
+document.getElementById('btn-load-svg').addEventListener('click', () => {
+  document.getElementById('file-svg').click();
+});
+
+document.getElementById('file-svg').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const content = await file.text();
+  try {
+    const resp = await fetch('/load_pattern', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: 'svg', content }),
+    });
+    const data = await resp.json();
+    if (data.observation) {
+      currentObs = data.observation;
+      handleObservation(data.observation);
+    } else if (data.error) {
+      showError(data.error);
+    }
+  } catch (err) {
+    showError('Failed to load SVG: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// Load FOLD file
+document.getElementById('btn-load-fold').addEventListener('click', () => {
+  document.getElementById('file-fold').click();
+});
+
+document.getElementById('file-fold').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const content = await file.text();
+  try {
+    const resp = await fetch('/load_pattern', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: 'fold', content }),
+    });
+    const data = await resp.json();
+    if (data.observation) {
+      currentObs = data.observation;
+      handleObservation(data.observation);
+    } else if (data.error) {
+      showError(data.error);
+    }
+  } catch (err) {
+    showError('Failed to load FOLD: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// Examples dropdown
+const exBtn = document.getElementById('btn-examples');
+const exDropdown = document.getElementById('examples-dropdown');
+let examplesFetched = false;
+
+exBtn.addEventListener('click', async () => {
+  const isOpen = exDropdown.classList.contains('open');
+  if (isOpen) {
+    exDropdown.classList.remove('open');
+    return;
+  }
+
+  if (!examplesFetched) {
+    exDropdown.innerHTML = '<div class="empty-msg">Loading...</div>';
+    exDropdown.classList.add('open');
+    try {
+      const resp = await fetch('/examples');
+      const data = await resp.json();
+      const items = data.examples || data || [];
+      if (items.length === 0) {
+        exDropdown.innerHTML = '<div class="empty-msg">No examples found</div>';
+      } else {
+        exDropdown.innerHTML = items.map(name =>
+          `<button class="example-item" data-name="${name}">${name}</button>`
+        ).join('');
+        exDropdown.querySelectorAll('.example-item').forEach(btn => {
+          btn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            exDropdown.classList.remove('open');
+            try {
+              const resp = await fetch('/load_pattern', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ example: btn.dataset.name }),
+              });
+              const d = await resp.json();
+              if (d.observation) {
+                currentObs = d.observation;
+                handleObservation(d.observation);
+              } else if (d.error) {
+                showError(d.error);
+              }
+            } catch (err) {
+              showError('Failed to load example: ' + err.message);
+            }
+          });
+        });
+      }
+      examplesFetched = true;
+    } catch (err) {
+      exDropdown.innerHTML = '<div class="empty-msg">Could not fetch examples</div>';
+    }
+  } else {
+    exDropdown.classList.add('open');
+  }
+});
+
+// Close dropdown on click outside
+document.addEventListener('click', (e) => {
+  if (!exBtn.contains(e.target) && !exDropdown.contains(e.target)) {
+    exDropdown.classList.remove('open');
+  }
 });
 
 // ── Init ───────────────────────────────────────────────────

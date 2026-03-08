@@ -4,64 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Origami RL — Training Grid</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: translateY(0); } }
-@keyframes pulseGlow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-@keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
-@keyframes stampIn { 0% { transform: scale(1.8) rotate(-8deg); opacity: 0; } 60% { transform: scale(1.05) rotate(1deg); opacity: 0.9; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
-@keyframes scoreReveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
-@keyframes borderTrace {
-  0% { clip-path: inset(0 100% 0 0); }
-  25% { clip-path: inset(0 0 0 0); }
-  100% { clip-path: inset(0 0 0 0); }
-}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --bg-deep: #12100e;
-  --bg-card: #1c1915;
-  --bg-panel: #0e0d0b;
-  --border: #2a2520;
-  --border-active: #3d3630;
-  --vermillion: #c73e1d;
-  --vermillion-dim: #8b2c15;
-  --indigo: #3d6b99;
-  --indigo-dim: #2a4a6b;
-  --cream: #e8dcc8;
-  --cream-dim: #b5a898;
-  --bone: #d4c8b0;
-  --muted: #6b6052;
-  --muted-dark: #3d3830;
-  --success: #6bab5e;
-  --error: #c73e1d;
-  --warning: #c9943e;
-  --font-display: 'Syne', sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace;
+  --bg: #fafafa;
+  --bg-card: #ffffff;
+  --border: #e5e7eb;
+  --border-hover: #d1d5db;
+  --text: #1a1a1a;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --accent: #3b82f6;
+  --success: #16a34a;
+  --error: #dc2626;
+  --warning: #d97706;
+  --surface: #f9fafb;
 }
 
 html, body { height: 100%; }
 
 body {
-  font-family: var(--font-mono);
-  background: var(--bg-deep);
-  color: var(--cream);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
   overflow: hidden;
-  position: relative;
-}
-
-/* Subtle noise grain overlay */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 9999;
 }
 
 /* ── Header ──────────────────────────────────────── */
@@ -71,99 +40,68 @@ body::before {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: var(--bg-panel);
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
-  position: relative;
   z-index: 10;
-  animation: slideDown 0.5s ease;
+  flex-shrink: 0;
 }
-
-.header::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  width: 100%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--vermillion-dim) 20%, var(--vermillion) 50%, var(--vermillion-dim) 80%, transparent);
-  opacity: 0.4;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.logo-mark {
-  width: 28px;
-  height: 28px;
-  position: relative;
-}
-
-.logo-mark svg { width: 100%; height: 100%; }
 
 .logo h1 {
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  color: var(--cream);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
-.logo h1 span {
-  color: var(--vermillion);
-}
+.logo h1 span { color: var(--accent); }
 
 .header-stats {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
 }
 
 .stat {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--muted);
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .stat .val {
-  font-size: 13px;
   font-weight: 600;
-  color: var(--cream);
-  letter-spacing: 0;
+  color: var(--text);
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 .conn-indicator {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--muted);
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .conn-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--error);
+  background: #d1d5db;
   transition: background 0.3s;
 }
 
-.conn-dot.connected { background: var(--success); box-shadow: 0 0 8px rgba(107,171,94,0.5); }
+.conn-dot.connected { background: var(--success); }
 .conn-dot.disconnected { background: var(--error); }
-.conn-dot.waiting { background: var(--warning); animation: pulseGlow 1.5s infinite; }
+.conn-dot.waiting { background: var(--warning); }
+
+/* ── Main Layout (grid view vs detail view) ──────── */
+.main-area {
+  height: calc(100vh - 52px);
+  position: relative;
+}
 
 /* ── Grid Container ──────────────────────────────── */
 .grid-container {
-  height: calc(100vh - 52px);
+  height: 100%;
   padding: 16px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -171,112 +109,80 @@ body::before {
   gap: 12px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: var(--muted-dark) transparent;
+  scrollbar-color: #d1d5db transparent;
 }
 
-.grid-container::-webkit-scrollbar { width: 4px; }
-.grid-container::-webkit-scrollbar-thumb { background: var(--muted-dark); border-radius: 2px; }
+.grid-container::-webkit-scrollbar { width: 5px; }
+.grid-container::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+
+.grid-container.hidden { display: none; }
 
 /* ── Episode Card ────────────────────────────────── */
 .ep-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   cursor: pointer;
   position: relative;
-  transition: border-color 0.3s, box-shadow 0.3s;
-  animation: fadeIn 0.4s ease both;
-}
-
-.ep-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: var(--indigo-dim);
-  transition: background 0.3s, box-shadow 0.3s;
-  z-index: 2;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  animation: fadeIn 0.3s ease both;
 }
 
 .ep-card:hover {
-  border-color: var(--border-active);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  border-color: var(--border-hover);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 
-.ep-card:hover::before {
-  background: var(--indigo);
-  box-shadow: 0 0 12px rgba(61,107,153,0.3);
+/* Status top-border */
+.ep-card.running { border-top: 2px solid var(--accent); }
+.ep-card.success { border-top: 2px solid var(--success); }
+.ep-card.error   { border-top: 2px solid var(--error); }
+.ep-card.timeout { border-top: 2px solid var(--warning); }
+
+/* Best episode: thicker green border instead of badge */
+.ep-card.best-episode {
+  border: 2px solid var(--success);
+  box-shadow: 0 0 0 1px var(--success), 0 2px 16px rgba(22,163,106,0.08);
 }
-
-.ep-card.running::before { background: var(--indigo); }
-.ep-card.success::before { background: var(--success); }
-.ep-card.error::before { background: var(--error); }
-.ep-card.timeout::before { background: var(--warning); }
-
-.ep-card.success:hover::before { box-shadow: 0 0 12px rgba(107,171,94,0.4); }
-.ep-card.error:hover::before { box-shadow: 0 0 12px rgba(199,62,29,0.4); }
 
 /* Card header */
 .ep-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px 8px 16px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
 }
 
 .ep-id-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 
 .ep-status-tag {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 1.5px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  padding: 3px 10px;
-  border: 1px solid;
-  position: relative;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
-.ep-status-tag.running {
-  color: var(--indigo);
-  border-color: var(--indigo-dim);
-  background: rgba(61,107,153,0.08);
-}
-
-.ep-status-tag.success {
-  color: var(--success);
-  border-color: rgba(107,171,94,0.3);
-  background: rgba(107,171,94,0.06);
-}
-
-.ep-status-tag.error {
-  color: var(--error);
-  border-color: var(--vermillion-dim);
-  background: rgba(199,62,29,0.06);
-}
-
-.ep-status-tag.timeout {
-  color: var(--warning);
-  border-color: rgba(201,148,62,0.3);
-  background: rgba(201,148,62,0.06);
-}
+.ep-status-tag.running { color: var(--accent); background: rgba(59,130,246,0.08); }
+.ep-status-tag.success { color: var(--success); background: rgba(22,163,106,0.08); }
+.ep-status-tag.error   { color: var(--error); background: rgba(220,38,38,0.08); }
+.ep-status-tag.timeout { color: var(--warning); background: rgba(217,119,6,0.08); }
 
 /* 3D canvas area */
 .ep-viewport {
   flex: 1;
   position: relative;
   min-height: 0;
-  background: var(--bg-deep);
+  background: var(--surface);
 }
 
 .ep-viewport canvas {
@@ -285,25 +191,12 @@ body::before {
   display: block;
 }
 
-/* Corner fold decoration on viewport */
-.ep-viewport::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 20px;
-  height: 20px;
-  background: linear-gradient(135deg, transparent 50%, var(--bg-card) 50%);
-  pointer-events: none;
-  opacity: 0.6;
-}
-
 /* Card footer with metrics */
 .ep-metrics-bar {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px 12px 6px 16px;
+  padding: 6px 12px;
   border-top: 1px solid var(--border);
   min-height: 32px;
 }
@@ -314,163 +207,102 @@ body::before {
   gap: 4px;
   padding-right: 10px;
   border-right: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .ep-metric:last-child { border-right: none; padding-right: 0; }
 
 .ep-metric .k {
-  color: var(--muted);
-  font-size: 9px;
-  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-size: 10px;
   text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .ep-metric .v {
   font-weight: 600;
-  color: var(--bone);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .ep-metric .v.pos { color: var(--success); }
 .ep-metric .v.neg { color: var(--error); }
-
-/* Score stamp — appears on completion */
-.score-stamp {
-  position: absolute;
-  top: 50%;
-  right: 16px;
-  transform: translateY(-50%);
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 28px;
-  line-height: 1;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 3;
-}
-
-.score-stamp.visible {
-  animation: stampIn 0.5s ease both;
-}
-
-.score-stamp.pos { color: var(--success); text-shadow: 0 0 20px rgba(107,171,94,0.3); }
-.score-stamp.neg { color: var(--error); text-shadow: 0 0 20px rgba(199,62,29,0.2); }
-
-/* Best episode highlight */
-.ep-card.best-episode {
-  box-shadow: 0 0 0 1px var(--success), 0 0 24px rgba(107,171,94,0.15);
-}
-
-.ep-card.best-episode::after {
-  content: 'BEST';
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  font-family: var(--font-display);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: var(--bg-deep);
-  background: var(--success);
-  padding: 2px 8px;
-  z-index: 5;
-}
 
 /* ── Empty State ─────────────────────────────────── */
 .empty-state {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: calc(100vh - 52px);
+  height: 100%;
   flex-direction: column;
-  gap: 16px;
-  animation: fadeIn 0.8s ease;
+  gap: 12px;
+  animation: fadeIn 0.5s ease;
 }
-
-.empty-crane {
-  width: 80px;
-  height: 80px;
-  opacity: 0.15;
-}
-
-.empty-crane svg { width: 100%; height: 100%; }
 
 .empty-state .msg {
-  font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 
 .empty-state .sub {
-  font-size: 11px;
-  color: var(--muted-dark);
-  letter-spacing: 0.5px;
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
-/* ── Fullscreen Overlay ──────────────────────────── */
-.fullscreen-overlay {
+/* ── Detail View (replaces fullscreen overlay) ───── */
+.detail-view {
   display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  background: var(--bg-deep);
+  height: 100%;
   flex-direction: column;
 }
 
-.fullscreen-overlay.active {
+.detail-view.active {
   display: flex;
-  animation: fadeIn 0.3s ease;
 }
 
-.fs-topbar {
+.detail-topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 24px;
   height: 48px;
-  background: var(--bg-panel);
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.fs-topbar h2 {
-  font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--cream);
+.detail-topbar h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
 }
 
-.fs-topbar h2 .ep-highlight {
-  color: var(--vermillion);
+.detail-topbar h2 .ep-highlight {
+  color: var(--accent);
 }
 
-.fs-close {
+.back-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: none;
+  background: var(--bg-card);
   border: 1px solid var(--border);
-  color: var(--muted);
+  color: var(--text-secondary);
   padding: 5px 14px;
+  border-radius: 6px;
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  transition: color 0.2s, border-color 0.2s;
+  font-family: inherit;
+  font-size: 13px;
+  transition: color 0.15s, border-color 0.15s;
 }
 
-.fs-close:hover {
-  color: var(--cream);
-  border-color: var(--border-active);
+.back-btn:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
 }
 
-.fs-body {
+.detail-body {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -479,43 +311,42 @@ body::before {
   background: var(--border);
 }
 
-.fs-panel {
+.detail-panel {
   position: relative;
   background: var(--bg-card);
   overflow: hidden;
 }
 
-.fs-panel-label {
+.detail-panel-label {
   position: absolute;
   top: 10px;
   left: 16px;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 2px;
+  font-size: 11px;
+  font-weight: 500;
   text-transform: uppercase;
-  color: var(--muted);
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
   z-index: 2;
   pointer-events: none;
 }
 
-.fs-panel canvas {
+.detail-panel canvas {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-.fs-dashboard {
+.detail-dashboard {
   display: flex;
   align-items: stretch;
   gap: 1px;
-  padding: 0;
   background: var(--border);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   min-height: 60px;
 }
 
-.fs-metric-cell {
+.detail-metric-cell {
   flex: 1;
   background: var(--bg-card);
   padding: 8px 14px;
@@ -524,24 +355,25 @@ body::before {
   justify-content: center;
 }
 
-.fs-metric-cell .label {
-  font-size: 8px;
+.detail-metric-cell .label {
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--muted);
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
   margin-bottom: 2px;
 }
 
-.fs-metric-cell .value {
+.detail-metric-cell .value {
   font-size: 18px;
   font-weight: 600;
-  color: var(--cream);
+  color: var(--text);
   line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
-.fs-metric-cell .value.pos { color: var(--success); }
-.fs-metric-cell .value.neg { color: var(--error); }
+.detail-metric-cell .value.pos { color: var(--success); }
+.detail-metric-cell .value.neg { color: var(--error); }
 
 /* Fold legend in crease panel */
 .fold-legend {
@@ -549,10 +381,9 @@ body::before {
   bottom: 10px;
   left: 16px;
   display: flex;
-  gap: 12px;
-  font-size: 9px;
-  letter-spacing: 0.5px;
-  color: var(--muted);
+  gap: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
   z-index: 2;
   pointer-events: none;
 }
@@ -565,17 +396,16 @@ body::before {
   vertical-align: middle;
 }
 
-.fold-legend .swatch.mountain { background: var(--vermillion); }
-.fold-legend .swatch.valley { background: var(--indigo); }
-.fold-legend .swatch.boundary { background: var(--cream-dim); }
+.fold-legend .swatch.mountain { background: var(--error); }
+.fold-legend .swatch.valley   { background: var(--accent); }
+.fold-legend .swatch.boundary { background: var(--text-secondary); }
 
 /* ── Responsive ──────────────────────────────────── */
 @media (max-width: 720px) {
   .header { padding: 0 12px; }
   .header-stats { gap: 12px; }
-  .stat { font-size: 9px; }
   .grid-container { padding: 8px; gap: 8px; grid-template-columns: 1fr 1fr; }
-  .fs-body { grid-template-columns: 1fr; }
+  .detail-body { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -584,21 +414,12 @@ body::before {
 <!-- Header -->
 <div class="header">
   <div class="logo">
-    <div class="logo-mark">
-      <svg viewBox="0 0 32 32" fill="none">
-        <path d="M16 2 L30 16 L16 30 L2 16 Z" stroke="currentColor" stroke-width="1.2" fill="none" opacity="0.25"/>
-        <path d="M16 2 L30 16 L16 16 Z" fill="var(--vermillion)" opacity="0.7"/>
-        <path d="M16 16 L30 16 L16 30 Z" fill="var(--vermillion)" opacity="0.4"/>
-        <path d="M2 16 L16 2 L16 16 Z" fill="var(--cream)" opacity="0.12"/>
-        <path d="M2 16 L16 16 L16 30 Z" fill="var(--cream)" opacity="0.06"/>
-      </svg>
-    </div>
-    <h1>Origami <span>RL</span></h1>
+    <h1>Origami <span>RL</span> Training</h1>
   </div>
   <div class="header-stats">
-    <div class="stat">Batch <span class="val" id="batch-id">&mdash;</span></div>
-    <div class="stat">Episodes <span class="val" id="ep-count">0</span></div>
-    <div class="stat">Avg <span class="val" id="avg-score">&mdash;</span></div>
+    <div class="stat">Batch<span class="val" id="batch-id">&mdash;</span></div>
+    <div class="stat">Episodes<span class="val" id="ep-count">0</span></div>
+    <div class="stat">Avg<span class="val" id="avg-score">&mdash;</span></div>
     <div class="conn-indicator">
       <span class="conn-dot disconnected" id="conn-dot"></span>
       <span id="conn-label">Offline</span>
@@ -606,48 +427,44 @@ body::before {
   </div>
 </div>
 
-<!-- Grid -->
-<div class="grid-container" id="grid"></div>
+<!-- Main Area -->
+<div class="main-area">
 
-<!-- Empty state -->
-<div class="empty-state" id="empty-state">
-  <div class="empty-crane">
-    <svg viewBox="0 0 80 80" fill="none" stroke="var(--cream)" stroke-width="0.8">
-      <polygon points="40,5 75,40 40,75 5,40" />
-      <line x1="40" y1="5" x2="40" y2="75" />
-      <line x1="5" y1="40" x2="75" y2="40" />
-      <line x1="40" y1="5" x2="75" y2="40" stroke-dasharray="3,2" />
-      <line x1="40" y1="75" x2="5" y2="40" stroke-dasharray="3,2" />
-    </svg>
-  </div>
-  <div class="msg">Awaiting Training</div>
-  <div class="sub">Episodes will appear here when a batch starts</div>
-</div>
+  <!-- Grid View -->
+  <div class="grid-container" id="grid"></div>
 
-<!-- Fullscreen Overlay -->
-<div class="fullscreen-overlay" id="fullscreen-overlay">
-  <div class="fs-topbar">
-    <h2 id="fs-title">Episode <span class="ep-highlight">&mdash;</span></h2>
-    <button class="fs-close" id="fs-close-btn">
-      <span style="font-size:14px;">&#x2190;</span> Back
-    </button>
+  <!-- Empty state -->
+  <div class="empty-state" id="empty-state">
+    <div class="msg">Awaiting Training</div>
+    <div class="sub">Episodes will appear here when a batch starts</div>
   </div>
-  <div class="fs-body">
-    <div class="fs-panel" id="fs-crease-panel">
-      <div class="fs-panel-label">Crease Pattern</div>
-      <canvas id="fs-crease-canvas"></canvas>
-      <div class="fold-legend">
-        <span><span class="swatch mountain"></span>Mountain</span>
-        <span><span class="swatch valley"></span>Valley</span>
-        <span><span class="swatch boundary"></span>Boundary</span>
+
+  <!-- Detail View (replaces fullscreen overlay) -->
+  <div class="detail-view" id="detail-view">
+    <div class="detail-topbar">
+      <h2 id="detail-title">Episode <span class="ep-highlight">&mdash;</span></h2>
+      <button class="back-btn" id="back-btn">
+        <span>&larr;</span> Back to Grid
+      </button>
+    </div>
+    <div class="detail-body">
+      <div class="detail-panel" id="detail-crease-panel">
+        <div class="detail-panel-label">Crease Pattern</div>
+        <canvas id="detail-crease-canvas"></canvas>
+        <div class="fold-legend">
+          <span><span class="swatch mountain"></span>Mountain</span>
+          <span><span class="swatch valley"></span>Valley</span>
+          <span><span class="swatch boundary"></span>Boundary</span>
+        </div>
+      </div>
+      <div class="detail-panel" id="detail-three-panel">
+        <div class="detail-panel-label">3D Folded State</div>
+        <canvas id="detail-three-canvas"></canvas>
       </div>
     </div>
-    <div class="fs-panel" id="fs-three-panel">
-      <div class="fs-panel-label">3D Folded State</div>
-      <canvas id="fs-three-canvas"></canvas>
-    </div>
+    <div class="detail-dashboard" id="detail-dashboard"></div>
   </div>
-  <div class="fs-dashboard" id="fs-dashboard"></div>
+
 </div>
 
 <script type="importmap">
@@ -664,60 +481,58 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ── State ──────────────────────────────────────────────────
 const episodes = {};
-let fullscreenEpId = null;
+let detailEpId = null;
 let cardIndex = 0;
 
 // ── Color constants ────────────────────────────────────────
 const C = {
-  bgDeep: 0x12100e,
-  vermillion: '#c73e1d',
-  indigo: '#3d6b99',
-  cream: '#e8dcc8',
-  bone: '#d4c8b0',
-  muted: '#6b6052',
-  mutedDark: '#3d3830',
-  success: '#6bab5e',
-  error: '#c73e1d',
+  bgScene: 0xf5f5f5,
+  mountain: '#dc2626',
+  valley: '#3b82f6',
+  boundary: '#374151',
+  mutedEdge: '#d1d5db',
+  success: '#16a34a',
+  error: '#dc2626',
 };
 
-const EDGE_COLORS_2D = { M: C.vermillion, V: C.indigo, B: C.bone, F: C.mutedDark, U: C.mutedDark };
+const EDGE_COLORS_2D = { M: C.mountain, V: C.valley, B: C.boundary, F: C.mutedEdge, U: C.mutedEdge };
 
-// ── Fullscreen dedicated Three.js scene ────────────────────
-const fsThreeCanvas = document.getElementById('fs-three-canvas');
-const fsRenderer = new THREE.WebGLRenderer({ canvas: fsThreeCanvas, antialias: true });
-fsRenderer.setPixelRatio(window.devicePixelRatio);
-const fsScene = new THREE.Scene();
-fsScene.background = new THREE.Color(0x1c1915);
-const fsCamera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
-fsCamera.position.set(0.5, 1.5, 2.0);
-fsScene.add(new THREE.AmbientLight(0xfff5e6, 0.4));
-const fsDirLight = new THREE.DirectionalLight(0xfff5e6, 0.7);
-fsDirLight.position.set(2, 3, 2);
-fsScene.add(fsDirLight);
-const fsFillLight = new THREE.DirectionalLight(0x8ba6c9, 0.25);
-fsFillLight.position.set(-2, 1, -1);
-fsScene.add(fsFillLight);
-const fsMeshGroup = new THREE.Group();
-fsScene.add(fsMeshGroup);
-const fsControls = new OrbitControls(fsCamera, fsThreeCanvas);
-fsControls.target.set(0.5, 0.5, 0);
-fsControls.enableDamping = true;
-fsControls.dampingFactor = 0.08;
+// ── Detail view dedicated Three.js scene ────────────────────
+const detailThreeCanvas = document.getElementById('detail-three-canvas');
+const detailRenderer = new THREE.WebGLRenderer({ canvas: detailThreeCanvas, antialias: true });
+detailRenderer.setPixelRatio(window.devicePixelRatio);
+const detailScene = new THREE.Scene();
+detailScene.background = new THREE.Color(C.bgScene);
+const detailCamera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+detailCamera.position.set(0.5, 1.5, 2.0);
+detailScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const detailDirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+detailDirLight.position.set(2, 3, 2);
+detailScene.add(detailDirLight);
+const detailFillLight = new THREE.DirectionalLight(0xeef2ff, 0.3);
+detailFillLight.position.set(-2, 1, -1);
+detailScene.add(detailFillLight);
+const detailMeshGroup = new THREE.Group();
+detailScene.add(detailMeshGroup);
+const detailControls = new OrbitControls(detailCamera, detailThreeCanvas);
+detailControls.target.set(0.5, 0.5, 0);
+detailControls.enableDamping = true;
+detailControls.dampingFactor = 0.08;
 
-const fsCreaseCanvas = document.getElementById('fs-crease-canvas');
-const fsCtx = fsCreaseCanvas.getContext('2d');
+const detailCreaseCanvas = document.getElementById('detail-crease-canvas');
+const detailCtx = detailCreaseCanvas.getContext('2d');
 
 // ── Mini renderer factory ──────────────────────────────────
 function createMiniRenderer(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(C.bgDeep);
+  scene.background = new THREE.Color(C.bgScene);
   const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
   camera.position.set(0.5, 1.2, 1.8);
   camera.lookAt(0.5, 0.0, -0.5);
-  scene.add(new THREE.AmbientLight(0xfff5e6, 0.5));
-  const dl = new THREE.DirectionalLight(0xfff5e6, 0.6);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.7);
   dl.position.set(2, 3, 2);
   scene.add(dl);
   const meshGroup = new THREE.Group();
@@ -741,11 +556,16 @@ function buildMesh(ps, meshGroup) {
   const edges = ps.edges_vertices || [];
   const assignments = ps.edges_assignment || [];
 
-  // Triangulate
-  const indices = [];
-  for (const face of faces) {
-    for (let i = 1; i < face.length - 1; i++) {
-      indices.push(face[0], face[i], face[i + 1]);
+  // Use triangulated_faces from server if available, otherwise fan-triangulate
+  let indices;
+  if (ps.triangulated_faces && ps.triangulated_faces.length > 0) {
+    indices = ps.triangulated_faces.flat();
+  } else {
+    indices = [];
+    for (const face of faces) {
+      for (let i = 1; i < face.length - 1; i++) {
+        indices.push(face[0], face[i], face[i + 1]);
+      }
     }
   }
 
@@ -757,15 +577,14 @@ function buildMesh(ps, meshGroup) {
     positions[i * 3 + 2] = -(verts[i][1] || 0);
   }
 
-  // Strain → color (warm bone → vermillion)
+  // Strain -> color (light blue-gray -> red for high strain)
   const maxStrain = Math.max(...strain, 0.0001);
   const colors = new Float32Array(verts.length * 3);
   for (let i = 0; i < verts.length; i++) {
     const t = Math.min(strain[i] / maxStrain, 1.0);
-    // Bone white → warm vermillion
-    colors[i * 3]     = 0.83 + 0.17 * t;   // R: 0.83 → 1.0
-    colors[i * 3 + 1] = 0.78 - 0.54 * t;   // G: 0.78 → 0.24
-    colors[i * 3 + 2] = 0.69 - 0.58 * t;   // B: 0.69 → 0.11
+    colors[i * 3]     = 0.85 + 0.15 * t;
+    colors[i * 3 + 1] = 0.88 - 0.52 * t;
+    colors[i * 3 + 2] = 0.95 - 0.82 * t;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -777,13 +596,13 @@ function buildMesh(ps, meshGroup) {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     side: THREE.DoubleSide,
-    roughness: 0.85,
-    metalness: 0.02,
+    roughness: 0.65,
+    metalness: 0.05,
   });
   meshGroup.add(new THREE.Mesh(geo, mat));
 
   // Crease edges
-  const edgeHex = { M: 0xc73e1d, V: 0x3d6b99, B: 0xb5a898 };
+  const edgeHex = { M: 0xdc2626, V: 0x3b82f6, B: 0x6b7280 };
   for (let i = 0; i < edges.length; i++) {
     const asgn = assignments[i];
     if (!(asgn in edgeHex)) continue;
@@ -808,11 +627,12 @@ function drawCrease(ctx, canvas, ps) {
   const cw = canvas.clientWidth, ch = canvas.clientHeight;
   ctx.clearRect(0, 0, cw, ch);
 
-  // Background
-  ctx.fillStyle = '#1c1915';
+  // Light background
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, cw, ch);
 
-  const verts = ps.vertices_coords;
+  // Use rest_positions for 2D if available
+  const verts = ps.rest_positions || ps.vertices_coords;
   const sheetW = ps.width || 1, sheetH = ps.height || 1;
   const margin = 40;
   const scale = Math.min((cw - 2 * margin) / sheetW, (ch - 2 * margin) / sheetH);
@@ -823,24 +643,25 @@ function drawCrease(ctx, canvas, ps) {
   const edges = ps.edges_vertices || [];
   const asgns = ps.edges_assignment || [];
 
-  // Draw in order: F/U → V → M → B (B on top)
+  // Draw in order: F/U -> V -> M -> B (B on top)
   for (const layer of ['F', 'U', 'V', 'M', 'B']) {
     for (let i = 0; i < edges.length; i++) {
       if ((asgns[i] || 'U') !== layer) continue;
       const [v1, v2] = edges[i];
+      if (!verts[v1] || !verts[v2]) continue;
       ctx.beginPath();
       ctx.moveTo(tx(verts[v1]), ty(verts[v1]));
       ctx.lineTo(tx(verts[v2]), ty(verts[v2]));
-      ctx.strokeStyle = EDGE_COLORS_2D[layer] || C.mutedDark;
+      ctx.strokeStyle = EDGE_COLORS_2D[layer] || C.mutedEdge;
 
       if (layer === 'B') {
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 2;
         ctx.setLineDash([]);
       } else if (layer === 'M') {
-        ctx.lineWidth = 1.4;
+        ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 2, 2, 2]);
       } else if (layer === 'V') {
-        ctx.lineWidth = 1.4;
+        ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 3]);
       } else {
         ctx.lineWidth = 0.6;
@@ -852,8 +673,9 @@ function drawCrease(ctx, canvas, ps) {
   }
 
   // Vertices as small dots
-  ctx.fillStyle = 'rgba(232,220,200,0.2)';
+  ctx.fillStyle = '#d1d5db';
   for (const v of verts) {
+    if (!v) continue;
     ctx.beginPath();
     ctx.arc(tx(v), ty(v), 1.5, 0, Math.PI * 2);
     ctx.fill();
@@ -862,7 +684,7 @@ function drawCrease(ctx, canvas, ps) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
-// ── Fullscreen metrics dashboard ───────────────────────────
+// ── Detail view metrics dashboard ──────────────────────────
 function renderDashboard(container, obs) {
   const m = obs.metrics || {};
   const cells = [
@@ -878,7 +700,7 @@ function renderDashboard(container, obs) {
     cells.push({ label: 'Reward', value: Number(obs.reward).toFixed(2), cls: obs.reward > 0 ? 'pos' : 'neg' });
   }
   container.innerHTML = cells.map(c =>
-    `<div class="fs-metric-cell">
+    `<div class="detail-metric-cell">
        <div class="label">${c.label}</div>
        <div class="value ${c.cls}">${c.value}</div>
      </div>`
@@ -896,7 +718,7 @@ function getOrCreateCard(epId) {
   const card = document.createElement('div');
   card.className = 'ep-card running';
   card.dataset.epId = epId;
-  card.style.animationDelay = `${idx * 0.06}s`;
+  card.style.animationDelay = `${idx * 0.05}s`;
   card.innerHTML = `
     <div class="ep-head">
       <span class="ep-id-label">${epId}</span>
@@ -904,14 +726,13 @@ function getOrCreateCard(epId) {
     </div>
     <div class="ep-viewport"><canvas></canvas></div>
     <div class="ep-metrics-bar"></div>
-    <div class="score-stamp"></div>
   `;
   grid.appendChild(card);
 
   const canvas = card.querySelector('.ep-viewport canvas');
   const mini = createMiniRenderer(canvas);
 
-  card.addEventListener('click', () => openFullscreen(epId));
+  card.addEventListener('click', () => openDetail(epId));
 
   const ep = {
     card, ...mini,
@@ -964,13 +785,6 @@ function updateCard(epId, obs, status, step, score) {
   }
   bar.innerHTML = html;
 
-  // Score stamp
-  if (ep.score != null && ep.status !== 'running') {
-    const stamp = ep.card.querySelector('.score-stamp');
-    stamp.textContent = ep.score > 0 ? `+${ep.score.toFixed(0)}` : ep.score.toFixed(0);
-    stamp.className = `score-stamp visible ${ep.score > 0 ? 'pos' : 'neg'}`;
-  }
-
   // 3D mesh
   const ps = obs ? obs.paper_state : null;
   if (ps) {
@@ -985,9 +799,9 @@ function updateCard(epId, obs, status, step, score) {
     }
   }
 
-  // Sync fullscreen if open
-  if (fullscreenEpId === epId && obs) {
-    updateFullscreenView(epId);
+  // Sync detail view if open
+  if (detailEpId === epId && obs) {
+    updateDetailView(epId);
   }
 
   // Header count
@@ -1004,23 +818,29 @@ function clearGrid() {
   cardIndex = 0;
 }
 
-// ── Fullscreen ─────────────────────────────────────────────
-function openFullscreen(epId) {
+// ── Detail View (SPA-style show/hide) ──────────────────────
+function openDetail(epId) {
   const ep = episodes[epId];
   if (!ep) return;
-  fullscreenEpId = epId;
-  document.getElementById('fullscreen-overlay').classList.add('active');
-  document.getElementById('fs-title').innerHTML =
+  detailEpId = epId;
+
+  // Hide grid, show detail
+  document.getElementById('grid').classList.add('hidden');
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('detail-view').classList.add('active');
+
+  document.getElementById('detail-title').innerHTML =
     `Episode <span class="ep-highlight">${epId}</span>`;
-  updateFullscreenView(epId);
+  updateDetailView(epId);
 }
 
-function closeFullscreen() {
-  fullscreenEpId = null;
-  document.getElementById('fullscreen-overlay').classList.remove('active');
+function closeDetail() {
+  detailEpId = null;
+  document.getElementById('detail-view').classList.remove('active');
+  document.getElementById('grid').classList.remove('hidden');
 }
 
-function updateFullscreenView(epId) {
+function updateDetailView(epId) {
   const ep = episodes[epId];
   if (!ep || !ep.observation) return;
 
@@ -1028,30 +848,31 @@ function updateFullscreenView(epId) {
   const ps = obs.paper_state;
 
   // 3D
-  buildMesh(ps, fsMeshGroup);
-  const threePnl = document.getElementById('fs-three-panel');
-  fsRenderer.setSize(threePnl.clientWidth, threePnl.clientHeight, false);
-  fsCamera.aspect = threePnl.clientWidth / threePnl.clientHeight;
-  fsCamera.updateProjectionMatrix();
-  fsRenderer.render(fsScene, fsCamera);
+  buildMesh(ps, detailMeshGroup);
+  const threePnl = document.getElementById('detail-three-panel');
+  detailRenderer.setSize(threePnl.clientWidth, threePnl.clientHeight, false);
+  detailCamera.aspect = threePnl.clientWidth / threePnl.clientHeight;
+  detailCamera.updateProjectionMatrix();
+  detailRenderer.render(detailScene, detailCamera);
 
   // 2D
-  drawCrease(fsCtx, fsCreaseCanvas, ps);
+  drawCrease(detailCtx, detailCreaseCanvas, ps);
 
   // Dashboard
-  renderDashboard(document.getElementById('fs-dashboard'), obs);
+  renderDashboard(document.getElementById('detail-dashboard'), obs);
 
   // Title
   let titleHtml = `Episode <span class="ep-highlight">${epId}</span>`;
   if (ep.score != null) {
     const cls = ep.score > 0 ? 'pos' : 'neg';
-    titleHtml += ` &mdash; <span style="color:var(--${cls === 'pos' ? 'success' : 'error'})">${ep.score.toFixed(2)}</span>`;
+    const color = ep.score > 0 ? 'var(--success)' : 'var(--error)';
+    titleHtml += ` &mdash; <span style="color:${color}">${ep.score.toFixed(2)}</span>`;
   }
-  document.getElementById('fs-title').innerHTML = titleHtml;
+  document.getElementById('detail-title').innerHTML = titleHtml;
 }
 
-document.getElementById('fs-close-btn').addEventListener('click', closeFullscreen);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFullscreen(); });
+document.getElementById('back-btn').addEventListener('click', closeDetail);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
 
 // ── Animation loop ─────────────────────────────────────────
 function animate() {
@@ -1070,9 +891,9 @@ function animate() {
     }
   }
 
-  if (fullscreenEpId) {
-    fsControls.update();
-    fsRenderer.render(fsScene, fsCamera);
+  if (detailEpId) {
+    detailControls.update();
+    detailRenderer.render(detailScene, detailCamera);
   }
 }
 animate();
@@ -1165,7 +986,7 @@ function handleMessage(msg) {
 
 // ── Window resize ──────────────────────────────────────────
 window.addEventListener('resize', () => {
-  if (fullscreenEpId) updateFullscreenView(fullscreenEpId);
+  if (detailEpId) updateDetailView(detailEpId);
 });
 
 // ── Init ───────────────────────────────────────────────────
