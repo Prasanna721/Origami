@@ -15,7 +15,7 @@ DEFAULT_K_FACET_SCALE = 0.2     # facet hinge stiffness scale
 DEFAULT_K_FOLD_SCALE = 0.7      # fold crease stiffness scale
 DEFAULT_DT = 0.005
 DEFAULT_DAMPING = 0.15
-DEFAULT_N_STEPS = 500
+DEFAULT_N_STEPS = 100
 DEFAULT_CONVERGENCE_THRESHOLD = 1e-10
 MAX_FORCE_MAG = 100.0           # clamp individual force magnitude
 

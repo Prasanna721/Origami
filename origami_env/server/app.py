@@ -1,12 +1,14 @@
-"""FastAPI entry point — OpenEnv create_app() + static Three.js viewer."""
+"""FastAPI entry point — OpenEnv create_app() + static Three.js viewer + training broadcast."""
 from __future__ import annotations
 
 import os
 
+from fastapi import WebSocket
 from openenv.core.env_server.http_server import create_app
 
 from .origami_environment import OrigamiEnvironment
 from .models import OrigamiAction, OrigamiObservation
+from .training_broadcast import TrainingBroadcastServer
 
 # ── OpenEnv app ───────────────────────────────────────────────
 
@@ -18,7 +20,18 @@ app = create_app(
     max_concurrent_envs=1,
 )
 
-# ── Serve Three.js viewer as static files ─────────────────────
+# ── Training broadcast (shared instance) ─────────────────────
+
+broadcast = TrainingBroadcastServer()
+
+
+@app.websocket("/ws/training")
+async def training_ws(websocket: WebSocket):
+    """Spectator WebSocket for live training grid viewer."""
+    await broadcast.connect_spectator(websocket)
+
+
+# ── Serve Three.js viewers as static files ────────────────────
 
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 

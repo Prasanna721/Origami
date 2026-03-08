@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Origami RL — Training Grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulseGlow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
+@keyframes stampIn { 0% { transform: scale(1.8) rotate(-8deg); opacity: 0; } 60% { transform: scale(1.05) rotate(1deg); opacity: 0.9; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+@keyframes scoreReveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes borderTrace {
+  0% { clip-path: inset(0 100% 0 0); }
+  25% { clip-path: inset(0 0 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-deep: #12100e;
+  --bg-card: #1c1915;
+  --bg-panel: #0e0d0b;
+  --border: #2a2520;
+  --border-active: #3d3630;
+  --vermillion: #c73e1d;
+  --vermillion-dim: #8b2c15;
+  --indigo: #3d6b99;
+  --indigo-dim: #2a4a6b;
+  --cream: #e8dcc8;
+  --cream-dim: #b5a898;
+  --bone: #d4c8b0;
+  --muted: #6b6052;
+  --muted-dark: #3d3830;
+  --success: #6bab5e;
+  --error: #c73e1d;
+  --warning: #c9943e;
+  --font-display: 'Syne', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font-mono);
+  background: var(--bg-deep);
+  color: var(--cream);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Subtle noise grain overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Header ──────────────────────────────────────── */
+.header {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 10;
+  animation: slideDown 0.5s ease;
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--vermillion-dim) 20%, var(--vermillion) 50%, var(--vermillion-dim) 80%, transparent);
+  opacity: 0.4;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-mark {
+  width: 28px;
+  height: 28px;
+  position: relative;
+}
+
+.logo-mark svg { width: 100%; height: 100%; }
+
+.logo h1 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--cream);
+}
+
+.logo h1 span {
+  color: var(--vermillion);
+}
+
+.header-stats {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.stat .val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cream);
+  letter-spacing: 0;
+}
+
+.conn-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.conn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--error);
+  transition: background 0.3s;
+}
+
+.conn-dot.connected { background: var(--success); box-shadow: 0 0 8px rgba(107,171,94,0.5); }
+.conn-dot.disconnected { background: var(--error); }
+.conn-dot.waiting { background: var(--warning); animation: pulseGlow 1.5s infinite; }
+
+/* ── Grid Container ──────────────────────────────── */
+.grid-container {
+  height: calc(100vh - 52px);
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-auto-rows: minmax(280px, 1fr);
+  gap: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted-dark) transparent;
+}
+
+.grid-container::-webkit-scrollbar { width: 4px; }
+.grid-container::-webkit-scrollbar-thumb { background: var(--muted-dark); border-radius: 2px; }
+
+/* ── Episode Card ────────────────────────────────── */
+.ep-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  animation: fadeIn 0.4s ease both;
+}
+
+.ep-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--indigo-dim);
+  transition: background 0.3s, box-shadow 0.3s;
+  z-index: 2;
+}
+
+.ep-card:hover {
+  border-color: var(--border-active);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+.ep-card:hover::before {
+  background: var(--indigo);
+  box-shadow: 0 0 12px rgba(61,107,153,0.3);
+}
+
+.ep-card.running::before { background: var(--indigo); }
+.ep-card.success::before { background: var(--success); }
+.ep-card.error::before { background: var(--error); }
+.ep-card.timeout::before { background: var(--warning); }
+
+.ep-card.success:hover::before { box-shadow: 0 0 12px rgba(107,171,94,0.4); }
+.ep-card.error:hover::before { box-shadow: 0 0 12px rgba(199,62,29,0.4); }
+
+/* Card header */
+.ep-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ep-id-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ep-status-tag {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border: 1px solid;
+  position: relative;
+}
+
+.ep-status-tag.running {
+  color: var(--indigo);
+  border-color: var(--indigo-dim);
+  background: rgba(61,107,153,0.08);
+}
+
+.ep-status-tag.success {
+  color: var(--success);
+  border-color: rgba(107,171,94,0.3);
+  background: rgba(107,171,94,0.06);
+}
+
+.ep-status-tag.error {
+  color: var(--error);
+  border-color: var(--vermillion-dim);
+  background: rgba(199,62,29,0.06);
+}
+
+.ep-status-tag.timeout {
+  color: var(--warning);
+  border-color: rgba(201,148,62,0.3);
+  background: rgba(201,148,62,0.06);
+}
+
+/* 3D canvas area */
+.ep-viewport {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: var(--bg-deep);
+}
+
+.ep-viewport canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Corner fold decoration on viewport */
+.ep-viewport::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, transparent 50%, var(--bg-card) 50%);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Card footer with metrics */
+.ep-metrics-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px 6px 16px;
+  border-top: 1px solid var(--border);
+  min-height: 32px;
+}
+
+.ep-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+  font-size: 10px;
+}
+
+.ep-metric:last-child { border-right: none; padding-right: 0; }
+
+.ep-metric .k {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.ep-metric .v {
+  font-weight: 600;
+  color: var(--bone);
+}
+
+.ep-metric .v.pos { color: var(--success); }
+.ep-metric .v.neg { color: var(--error); }
+
+/* Score stamp — appears on completion */
+.score-stamp {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 28px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.score-stamp.visible {
+  animation: stampIn 0.5s ease both;
+}
+
+.score-stamp.pos { color: var(--success); text-shadow: 0 0 20px rgba(107,171,94,0.3); }
+.score-stamp.neg { color: var(--error); text-shadow: 0 0 20px rgba(199,62,29,0.2); }
+
+/* Best episode highlight */
+.ep-card.best-episode {
+  box-shadow: 0 0 0 1px var(--success), 0 0 24px rgba(107,171,94,0.15);
+}
+
+.ep-card.best-episode::after {
+  content: 'BEST';
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--bg-deep);
+  background: var(--success);
+  padding: 2px 8px;
+  z-index: 5;
+}
+
+/* ── Empty State ─────────────────────────────────── */
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(100vh - 52px);
+  flex-direction: column;
+  gap: 16px;
+  animation: fadeIn 0.8s ease;
+}
+
+.empty-crane {
+  width: 80px;
+  height: 80px;
+  opacity: 0.15;
+}
+
+.empty-crane svg { width: 100%; height: 100%; }
+
+.empty-state .msg {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.empty-state .sub {
+  font-size: 11px;
+  color: var(--muted-dark);
+  letter-spacing: 0.5px;
+}
+
+/* ── Fullscreen Overlay ──────────────────────────── */
+.fullscreen-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg-deep);
+  flex-direction: column;
+}
+
+.fullscreen-overlay.active {
+  display: flex;
+  animation: fadeIn 0.3s ease;
+}
+
+.fs-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px;
+  height: 48px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.fs-topbar h2 {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--cream);
+}
+
+.fs-topbar h2 .ep-highlight {
+  color: var(--vermillion);
+}
+
+.fs-close {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 5px 14px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.fs-close:hover {
+  color: var(--cream);
+  border-color: var(--border-active);
+}
+
+.fs-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  min-height: 0;
+  background: var(--border);
+}
+
+.fs-panel {
+  position: relative;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.fs-panel-label {
+  position: absolute;
+  top: 10px;
+  left: 16px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.fs-panel canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.fs-dashboard {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  padding: 0;
+  background: var(--border);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 60px;
+}
+
+.fs-metric-cell {
+  flex: 1;
+  background: var(--bg-card);
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.fs-metric-cell .label {
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.fs-metric-cell .value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--cream);
+  line-height: 1.1;
+}
+
+.fs-metric-cell .value.pos { color: var(--success); }
+.fs-metric-cell .value.neg { color: var(--error); }
+
+/* Fold legend in crease panel */
+.fold-legend {
+  position: absolute;
+  bottom: 10px;
+  left: 16px;
+  display: flex;
+  gap: 12px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.fold-legend .swatch {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.fold-legend .swatch.mountain { background: var(--vermillion); }
+.fold-legend .swatch.valley { background: var(--indigo); }
+.fold-legend .swatch.boundary { background: var(--cream-dim); }
+
+/* ── Responsive ──────────────────────────────────── */
+@media (max-width: 720px) {
+  .header { padding: 0 12px; }
+  .header-stats { gap: 12px; }
+  .stat { font-size: 9px; }
+  .grid-container { padding: 8px; gap: 8px; grid-template-columns: 1fr 1fr; }
+  .fs-body { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 32 32" fill="none">
+        <path d="M16 2 L30 16 L16 30 L2 16 Z" stroke="currentColor" stroke-width="1.2" fill="none" opacity="0.25"/>
+        <path d="M16 2 L30 16 L16 16 Z" fill="var(--vermillion)" opacity="0.7"/>
+        <path d="M16 16 L30 16 L16 30 Z" fill="var(--vermillion)" opacity="0.4"/>
+        <path d="M2 16 L16 2 L16 16 Z" fill="var(--cream)" opacity="0.12"/>
+        <path d="M2 16 L16 16 L16 30 Z" fill="var(--cream)" opacity="0.06"/>
+      </svg>
+    </div>
+    <h1>Origami <span>RL</span></h1>
+  </div>
+  <div class="header-stats">
+    <div class="stat">Batch <span class="val" id="batch-id">&mdash;</span></div>
+    <div class="stat">Episodes <span class="val" id="ep-count">0</span></div>
+    <div class="stat">Avg <span class="val" id="avg-score">&mdash;</span></div>
+    <div class="conn-indicator">
+      <span class="conn-dot disconnected" id="conn-dot"></span>
+      <span id="conn-label">Offline</span>
+    </div>
+  </div>
+</div>
+
+<!-- Grid -->
+<div class="grid-container" id="grid"></div>
+
+<!-- Empty state -->
+<div class="empty-state" id="empty-state">
+  <div class="empty-crane">
+    <svg viewBox="0 0 80 80" fill="none" stroke="var(--cream)" stroke-width="0.8">
+      <polygon points="40,5 75,40 40,75 5,40" />
+      <line x1="40" y1="5" x2="40" y2="75" />
+      <line x1="5" y1="40" x2="75" y2="40" />
+      <line x1="40" y1="5" x2="75" y2="40" stroke-dasharray="3,2" />
+      <line x1="40" y1="75" x2="5" y2="40" stroke-dasharray="3,2" />
+    </svg>
+  </div>
+  <div class="msg">Awaiting Training</div>
+  <div class="sub">Episodes will appear here when a batch starts</div>
+</div>
+
+<!-- Fullscreen Overlay -->
+<div class="fullscreen-overlay" id="fullscreen-overlay">
+  <div class="fs-topbar">
+    <h2 id="fs-title">Episode <span class="ep-highlight">&mdash;</span></h2>
+    <button class="fs-close" id="fs-close-btn">
+      <span style="font-size:14px;">&#x2190;</span> Back
+    </button>
+  </div>
+  <div class="fs-body">
+    <div class="fs-panel" id="fs-crease-panel">
+      <div class="fs-panel-label">Crease Pattern</div>
+      <canvas id="fs-crease-canvas"></canvas>
+      <div class="fold-legend">
+        <span><span class="swatch mountain"></span>Mountain</span>
+        <span><span class="swatch valley"></span>Valley</span>
+        <span><span class="swatch boundary"></span>Boundary</span>
+      </div>
+    </div>
+    <div class="fs-panel" id="fs-three-panel">
+      <div class="fs-panel-label">3D Folded State</div>
+      <canvas id="fs-three-canvas"></canvas>
+    </div>
+  </div>
+  <div class="fs-dashboard" id="fs-dashboard"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── State ──────────────────────────────────────────────────
+const episodes = {};
+let fullscreenEpId = null;
+let cardIndex = 0;
+
+// ── Color constants ────────────────────────────────────────
+const C = {
+  bgDeep: 0x12100e,
+  vermillion: '#c73e1d',
+  indigo: '#3d6b99',
+  cream: '#e8dcc8',
+  bone: '#d4c8b0',
+  muted: '#6b6052',
+  mutedDark: '#3d3830',
+  success: '#6bab5e',
+  error: '#c73e1d',
+};
+
+const EDGE_COLORS_2D = { M: C.vermillion, V: C.indigo, B: C.bone, F: C.mutedDark, U: C.mutedDark };
+
+// ── Fullscreen dedicated Three.js scene ────────────────────
+const fsThreeCanvas = document.getElementById('fs-three-canvas');
+const fsRenderer = new THREE.WebGLRenderer({ canvas: fsThreeCanvas, antialias: true });
+fsRenderer.setPixelRatio(window.devicePixelRatio);
+const fsScene = new THREE.Scene();
+fsScene.background = new THREE.Color(0x1c1915);
+const fsCamera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+fsCamera.position.set(0.5, 1.5, 2.0);
+fsScene.add(new THREE.AmbientLight(0xfff5e6, 0.4));
+const fsDirLight = new THREE.DirectionalLight(0xfff5e6, 0.7);
+fsDirLight.position.set(2, 3, 2);
+fsScene.add(fsDirLight);
+const fsFillLight = new THREE.DirectionalLight(0x8ba6c9, 0.25);
+fsFillLight.position.set(-2, 1, -1);
+fsScene.add(fsFillLight);
+const fsMeshGroup = new THREE.Group();
+fsScene.add(fsMeshGroup);
+const fsControls = new OrbitControls(fsCamera, fsThreeCanvas);
+fsControls.target.set(0.5, 0.5, 0);
+fsControls.enableDamping = true;
+fsControls.dampingFactor = 0.08;
+
+const fsCreaseCanvas = document.getElementById('fs-crease-canvas');
+const fsCtx = fsCreaseCanvas.getContext('2d');
+
+// ── Mini renderer factory ──────────────────────────────────
+function createMiniRenderer(canvas) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(C.bgDeep);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+  camera.position.set(0.5, 1.2, 1.8);
+  camera.lookAt(0.5, 0.0, -0.5);
+  scene.add(new THREE.AmbientLight(0xfff5e6, 0.5));
+  const dl = new THREE.DirectionalLight(0xfff5e6, 0.6);
+  dl.position.set(2, 3, 2);
+  scene.add(dl);
+  const meshGroup = new THREE.Group();
+  scene.add(meshGroup);
+  return { renderer, scene, camera, meshGroup };
+}
+
+// ── Mesh builder ───────────────────────────────────────────
+function buildMesh(ps, meshGroup) {
+  while (meshGroup.children.length) {
+    const c = meshGroup.children[0];
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) c.material.dispose();
+    meshGroup.remove(c);
+  }
+  if (!ps || !ps.vertices_coords || ps.vertices_coords.length === 0) return;
+
+  const verts = ps.vertices_coords;
+  const faces = ps.faces_vertices || [];
+  const strain = ps.strain_per_vertex || new Array(verts.length).fill(0);
+  const edges = ps.edges_vertices || [];
+  const assignments = ps.edges_assignment || [];
+
+  // Triangulate
+  const indices = [];
+  for (const face of faces) {
+    for (let i = 1; i < face.length - 1; i++) {
+      indices.push(face[0], face[i], face[i + 1]);
+    }
+  }
+
+  // Positions (swap Y/Z for Three.js Y-up)
+  const positions = new Float32Array(verts.length * 3);
+  for (let i = 0; i < verts.length; i++) {
+    positions[i * 3]     = verts[i][0];
+    positions[i * 3 + 1] = verts[i][2] || 0;
+    positions[i * 3 + 2] = -(verts[i][1] || 0);
+  }
+
+  // Strain → color (warm bone → vermillion)
+  const maxStrain = Math.max(...strain, 0.0001);
+  const colors = new Float32Array(verts.length * 3);
+  for (let i = 0; i < verts.length; i++) {
+    const t = Math.min(strain[i] / maxStrain, 1.0);
+    // Bone white → warm vermillion
+    colors[i * 3]     = 0.83 + 0.17 * t;   // R: 0.83 → 1.0
+    colors[i * 3 + 1] = 0.78 - 0.54 * t;   // G: 0.78 → 0.24
+    colors[i * 3 + 2] = 0.69 - 0.58 * t;   // B: 0.69 → 0.11
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  if (indices.length > 0) geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    roughness: 0.85,
+    metalness: 0.02,
+  });
+  meshGroup.add(new THREE.Mesh(geo, mat));
+
+  // Crease edges
+  const edgeHex = { M: 0xc73e1d, V: 0x3d6b99, B: 0xb5a898 };
+  for (let i = 0; i < edges.length; i++) {
+    const asgn = assignments[i];
+    if (!(asgn in edgeHex)) continue;
+    const [v1, v2] = edges[i];
+    const pts = [
+      new THREE.Vector3(verts[v1][0], verts[v1][2] || 0, -(verts[v1][1] || 0)),
+      new THREE.Vector3(verts[v2][0], verts[v2][2] || 0, -(verts[v2][1] || 0)),
+    ];
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+    const lineMat = new THREE.LineBasicMaterial({ color: edgeHex[asgn] });
+    meshGroup.add(new THREE.Line(lineGeo, lineMat));
+  }
+}
+
+// ── 2D crease pattern ──────────────────────────────────────
+function drawCrease(ctx, canvas, ps) {
+  if (!ps || !ps.vertices_coords) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  ctx.clearRect(0, 0, cw, ch);
+
+  // Background
+  ctx.fillStyle = '#1c1915';
+  ctx.fillRect(0, 0, cw, ch);
+
+  const verts = ps.vertices_coords;
+  const sheetW = ps.width || 1, sheetH = ps.height || 1;
+  const margin = 40;
+  const scale = Math.min((cw - 2 * margin) / sheetW, (ch - 2 * margin) / sheetH);
+  const ox = (cw - sheetW * scale) / 2, oy = (ch - sheetH * scale) / 2;
+  const tx = v => ox + v[0] * scale;
+  const ty = v => oy + (sheetH - v[1]) * scale;
+
+  const edges = ps.edges_vertices || [];
+  const asgns = ps.edges_assignment || [];
+
+  // Draw in order: F/U → V → M → B (B on top)
+  for (const layer of ['F', 'U', 'V', 'M', 'B']) {
+    for (let i = 0; i < edges.length; i++) {
+      if ((asgns[i] || 'U') !== layer) continue;
+      const [v1, v2] = edges[i];
+      ctx.beginPath();
+      ctx.moveTo(tx(verts[v1]), ty(verts[v1]));
+      ctx.lineTo(tx(verts[v2]), ty(verts[v2]));
+      ctx.strokeStyle = EDGE_COLORS_2D[layer] || C.mutedDark;
+
+      if (layer === 'B') {
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([]);
+      } else if (layer === 'M') {
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([6, 2, 2, 2]);
+      } else if (layer === 'V') {
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([5, 3]);
+      } else {
+        ctx.lineWidth = 0.6;
+        ctx.setLineDash([]);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Vertices as small dots
+  ctx.fillStyle = 'rgba(232,220,200,0.2)';
+  for (const v of verts) {
+    ctx.beginPath();
+    ctx.arc(tx(v), ty(v), 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+// ── Fullscreen metrics dashboard ───────────────────────────
+function renderDashboard(container, obs) {
+  const m = obs.metrics || {};
+  const cells = [
+    { label: 'Compactness', value: (m.compactness || 0).toFixed(3), cls: m.compactness > 0.5 ? 'pos' : '' },
+    { label: 'Strain', value: (m.max_strain || 0).toFixed(5), cls: m.strain_exceeded ? 'neg' : '' },
+    { label: 'Folds', value: m.fold_count || 0, cls: '' },
+    { label: 'Valid', value: m.is_valid ? 'YES' : 'NO', cls: m.is_valid ? 'pos' : 'neg' },
+    { label: 'Kawasaki', value: m.kawasaki_violations || 0, cls: m.kawasaki_violations > 0 ? 'neg' : 'pos' },
+    { label: 'Maekawa', value: m.maekawa_violations || 0, cls: m.maekawa_violations > 0 ? 'neg' : 'pos' },
+    { label: 'Energy', value: (m.total_energy || 0).toFixed(3), cls: '' },
+  ];
+  if (obs.done && obs.reward != null) {
+    cells.push({ label: 'Reward', value: Number(obs.reward).toFixed(2), cls: obs.reward > 0 ? 'pos' : 'neg' });
+  }
+  container.innerHTML = cells.map(c =>
+    `<div class="fs-metric-cell">
+       <div class="label">${c.label}</div>
+       <div class="value ${c.cls}">${c.value}</div>
+     </div>`
+  ).join('');
+}
+
+// ── Card CRUD ──────────────────────────────────────────────
+function getOrCreateCard(epId) {
+  if (episodes[epId] && episodes[epId].card) return episodes[epId];
+
+  const grid = document.getElementById('grid');
+  document.getElementById('empty-state').style.display = 'none';
+
+  const idx = cardIndex++;
+  const card = document.createElement('div');
+  card.className = 'ep-card running';
+  card.dataset.epId = epId;
+  card.style.animationDelay = `${idx * 0.06}s`;
+  card.innerHTML = `
+    <div class="ep-head">
+      <span class="ep-id-label">${epId}</span>
+      <span class="ep-status-tag running">Running</span>
+    </div>
+    <div class="ep-viewport"><canvas></canvas></div>
+    <div class="ep-metrics-bar"></div>
+    <div class="score-stamp"></div>
+  `;
+  grid.appendChild(card);
+
+  const canvas = card.querySelector('.ep-viewport canvas');
+  const mini = createMiniRenderer(canvas);
+
+  card.addEventListener('click', () => openFullscreen(epId));
+
+  const ep = {
+    card, ...mini,
+    status: 'running', step: 0, score: null,
+    observation: {}, metrics: {},
+  };
+  episodes[epId] = ep;
+
+  requestAnimationFrame(() => {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w > 0 && h > 0) {
+      mini.renderer.setSize(w, h, false);
+      mini.camera.aspect = w / h;
+      mini.camera.updateProjectionMatrix();
+    }
+  });
+
+  return ep;
+}
+
+function updateCard(epId, obs, status, step, score) {
+  const ep = getOrCreateCard(epId);
+  ep.status = status || ep.status;
+  ep.step = step != null ? step : ep.step;
+  if (score != null) ep.score = score;
+  if (obs) {
+    ep.observation = obs;
+    ep.metrics = obs.metrics || {};
+  }
+
+  // Card class
+  ep.card.className = `ep-card ${ep.status}`;
+
+  // Status tag
+  const tag = ep.card.querySelector('.ep-status-tag');
+  tag.className = `ep-status-tag ${ep.status}`;
+  const labels = { running: 'Running', success: 'Complete', error: 'Error', timeout: 'Timeout' };
+  tag.textContent = labels[ep.status] || ep.status;
+
+  // Metrics bar
+  const bar = ep.card.querySelector('.ep-metrics-bar');
+  const m = ep.metrics;
+  let html = `
+    <div class="ep-metric"><span class="k">Step</span> <span class="v">${ep.step}</span></div>
+    <div class="ep-metric"><span class="k">C</span> <span class="v ${(m.compactness||0)>0.5?'pos':''}">${(m.compactness||0).toFixed(2)}</span></div>
+    <div class="ep-metric"><span class="k">Valid</span> <span class="v ${m.is_valid?'pos':'neg'}">${m.is_valid?'Y':'N'}</span></div>
+  `;
+  if (ep.score != null) {
+    html += `<div class="ep-metric"><span class="k">R</span> <span class="v ${ep.score>0?'pos':'neg'}">${ep.score.toFixed(1)}</span></div>`;
+  }
+  bar.innerHTML = html;
+
+  // Score stamp
+  if (ep.score != null && ep.status !== 'running') {
+    const stamp = ep.card.querySelector('.score-stamp');
+    stamp.textContent = ep.score > 0 ? `+${ep.score.toFixed(0)}` : ep.score.toFixed(0);
+    stamp.className = `score-stamp visible ${ep.score > 0 ? 'pos' : 'neg'}`;
+  }
+
+  // 3D mesh
+  const ps = obs ? obs.paper_state : null;
+  if (ps) {
+    buildMesh(ps, ep.meshGroup);
+    const canvas = ep.card.querySelector('.ep-viewport canvas');
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w > 0 && h > 0) {
+      ep.renderer.setSize(w, h, false);
+      ep.camera.aspect = w / h;
+      ep.camera.updateProjectionMatrix();
+      ep.renderer.render(ep.scene, ep.camera);
+    }
+  }
+
+  // Sync fullscreen if open
+  if (fullscreenEpId === epId && obs) {
+    updateFullscreenView(epId);
+  }
+
+  // Header count
+  document.getElementById('ep-count').textContent = Object.keys(episodes).length;
+}
+
+function clearGrid() {
+  const grid = document.getElementById('grid');
+  for (const ep of Object.values(episodes)) {
+    if (ep.renderer) ep.renderer.dispose();
+  }
+  for (const key of Object.keys(episodes)) delete episodes[key];
+  grid.innerHTML = '';
+  cardIndex = 0;
+}
+
+// ── Fullscreen ─────────────────────────────────────────────
+function openFullscreen(epId) {
+  const ep = episodes[epId];
+  if (!ep) return;
+  fullscreenEpId = epId;
+  document.getElementById('fullscreen-overlay').classList.add('active');
+  document.getElementById('fs-title').innerHTML =
+    `Episode <span class="ep-highlight">${epId}</span>`;
+  updateFullscreenView(epId);
+}
+
+function closeFullscreen() {
+  fullscreenEpId = null;
+  document.getElementById('fullscreen-overlay').classList.remove('active');
+}
+
+function updateFullscreenView(epId) {
+  const ep = episodes[epId];
+  if (!ep || !ep.observation) return;
+
+  const obs = ep.observation;
+  const ps = obs.paper_state;
+
+  // 3D
+  buildMesh(ps, fsMeshGroup);
+  const threePnl = document.getElementById('fs-three-panel');
+  fsRenderer.setSize(threePnl.clientWidth, threePnl.clientHeight, false);
+  fsCamera.aspect = threePnl.clientWidth / threePnl.clientHeight;
+  fsCamera.updateProjectionMatrix();
+  fsRenderer.render(fsScene, fsCamera);
+
+  // 2D
+  drawCrease(fsCtx, fsCreaseCanvas, ps);
+
+  // Dashboard
+  renderDashboard(document.getElementById('fs-dashboard'), obs);
+
+  // Title
+  let titleHtml = `Episode <span class="ep-highlight">${epId}</span>`;
+  if (ep.score != null) {
+    const cls = ep.score > 0 ? 'pos' : 'neg';
+    titleHtml += ` &mdash; <span style="color:var(--${cls === 'pos' ? 'success' : 'error'})">${ep.score.toFixed(2)}</span>`;
+  }
+  document.getElementById('fs-title').innerHTML = titleHtml;
+}
+
+document.getElementById('fs-close-btn').addEventListener('click', closeFullscreen);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFullscreen(); });
+
+// ── Animation loop ─────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+
+  for (const ep of Object.values(episodes)) {
+    if (ep.renderer && ep.card && ep.card.offsetParent !== null) {
+      const canvas = ep.card.querySelector('.ep-viewport canvas');
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (w > 0 && h > 0) {
+        ep.renderer.setSize(w, h, false);
+        ep.camera.aspect = w / h;
+        ep.camera.updateProjectionMatrix();
+        ep.renderer.render(ep.scene, ep.camera);
+      }
+    }
+  }
+
+  if (fullscreenEpId) {
+    fsControls.update();
+    fsRenderer.render(fsScene, fsCamera);
+  }
+}
+animate();
+
+// ── WebSocket ──────────────────────────────────────────────
+let ws = null;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${proto}//${location.host}/ws/training`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    document.getElementById('conn-dot').className = 'conn-dot connected';
+    document.getElementById('conn-label').textContent = 'Live';
+  };
+
+  ws.onclose = () => {
+    document.getElementById('conn-dot').className = 'conn-dot disconnected';
+    document.getElementById('conn-label').textContent = 'Offline';
+    setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => {
+    document.getElementById('conn-dot').className = 'conn-dot disconnected';
+    document.getElementById('conn-label').textContent = 'Error';
+  };
+
+  ws.onmessage = (evt) => {
+    try {
+      handleMessage(JSON.parse(evt.data));
+    } catch (e) {
+      console.error('WS parse error:', e);
+    }
+  };
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'registry':
+      document.getElementById('batch-id').textContent = msg.batch_id || '\u2014';
+      if (msg.episodes) {
+        for (const [epId, ep] of Object.entries(msg.episodes)) {
+          updateCard(epId, ep.observation, ep.status, ep.step, ep.score);
+        }
+      }
+      if (!msg.episodes || Object.keys(msg.episodes).length === 0) {
+        document.getElementById('empty-state').style.display = 'flex';
+      }
+      break;
+
+    case 'training_start':
+      document.getElementById('conn-dot').className = 'conn-dot connected';
+      document.getElementById('conn-label').textContent = 'Training';
+      break;
+
+    case 'batch_start':
+      clearGrid();
+      document.getElementById('batch-id').textContent = msg.batch_id;
+      document.getElementById('avg-score').textContent = '\u2014';
+      document.getElementById('empty-state').style.display = 'none';
+      break;
+
+    case 'episode_reset':
+      updateCard(msg.episode_id, msg.observation, 'running', 0, null);
+      break;
+
+    case 'episode_update':
+      updateCard(msg.episode_id, msg.observation, 'running', msg.step, null);
+      break;
+
+    case 'episode_done':
+      updateCard(msg.episode_id, null, msg.status, null, msg.score);
+      break;
+
+    case 'batch_done':
+      document.getElementById('avg-score').textContent =
+        msg.avg_score != null ? msg.avg_score.toFixed(2) : '\u2014';
+      if (msg.best_episode_id && episodes[msg.best_episode_id]) {
+        episodes[msg.best_episode_id].card.classList.add('best-episode');
+      }
+      break;
+
+    case 'training_done':
+      document.getElementById('conn-dot').className = 'conn-dot waiting';
+      document.getElementById('conn-label').textContent = 'Done';
+      break;
+  }
+}
+
+// ── Window resize ──────────────────────────────────────────
+window.addEventListener('resize', () => {
+  if (fullscreenEpId) updateFullscreenView(fullscreenEpId);
+});
+
+// ── Init ───────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>

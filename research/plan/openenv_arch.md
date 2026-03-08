@@ -114,23 +114,24 @@ origami_env/                             # THE deliverable — one package
 │   ├── models.py                        # OpenEnv types: OrigamiAction, OrigamiObservation, OrigamiState
 │   ├── origami_environment.py           # Environment class (subclasses openenv Environment)
 │   ├── tasks.py                         # Task pool, curriculum levels, difficulty sampling
-│   ├── app.py                           # create_app() + mount static viewer
+│   ├── app.py                           # create_app() + /ws/training + mount viewers
+│   ├── training_broadcast.py            # TrainingBroadcastServer for live grid spectating
 │   ├── __init__.py
 │   ├── requirements.txt                 # openenv-core, numpy, scipy, pydantic (NO matplotlib)
 │   └── Dockerfile
 │
-├── viewer/                              # Three.js origami viewer (static files)
-│   ├── index.html                       # Single page: 2D + 3D + metrics + controls
-│   ├── origami-viewer.js                # Three.js rendering from FOLD data
-│   └── style.css                        # Layout styles
+├── viewer/                              # Three.js viewers (static files, no build step)
+│   ├── index.html                       # Demo viewer: 2D + 3D + metrics + controls
+│   └── training.html                    # Training grid viewer: G episodes live + fullscreen
 │
 ├── client/                              # OpenEnv client (for RL training)
 │   ├── __init__.py
 │   ├── client.py                        # OrigamiEnvClient (EnvClient subclass, WebSocket)
 │   └── reward_functions.py              # code_valid, no_cheating, fold_quality (GRPO rewards)
 │
-├── training/                            # GRPO training script (runs on Colab)
-│   └── train_grpo.py                    # Launches server, runs GRPOTrainer (2048 pattern)
+├── training/                            # GRPO training (runs on Colab)
+│   ├── train_grpo.py                    # GRPOTrainer + --demo mode for grid testing
+│   └── runner.py                        # Parallel episode executor with broadcast hooks
 │
 ├── openenv.yaml                         # Manifest for openenv push
 ├── pyproject.toml
@@ -883,6 +884,9 @@ tags:
 - [x] `client/reward_functions.py` — GRPO reward functions
 - [x] `renderer/exporter.py` — FOLD JSON + OBJ export
 - [x] `openenv.yaml`, `pyproject.toml`, `Dockerfile`
+- [x] `server/training_broadcast.py` — TrainingBroadcastServer with episode registry
+- [x] `training/runner.py` — Parallel episode executor with broadcast hooks
+- [x] `viewer/training.html` — Training grid viewer with mini Three.js renderers
 
 ### TODO
 
@@ -894,3 +898,305 @@ tags:
 - [x] Update Dockerfile to copy viewer/
 - [x] Write `training/train_grpo.py` (2048 pattern)
 - [x] Test openenv validate (passes: "Ready for multi-mode deployment")
+
+---
+
+## 15. Training Grid Viewer — Live Spectator for RL Training
+
+### 15.1 Concept
+
+During GRPO training, the trainer generates G completions (strategies) per prompt.
+Each strategy runs a full episode (reset → fold → fold → ... → stop).
+The **Training Grid Viewer** shows ALL G episodes simultaneously as a live grid:
+
+```
+┌──────────┬──────────┬──────────┬──────────┐
+│  EP 1    │  EP 2    │  EP 3    │  EP 4    │  G=4 strategies
+│  [3D]    │  [3D]    │  [3D]    │  [3D]    │  each cell = mini
+│  📄 fold │  📄 fold │  ✅ done │  📄 fold │  Three.js renderer
+│  step 2  │  step 5  │  r=20.0  │  step 3  │  + status badge
+│  c=0.31  │  c=0.52  │  c=0.85  │  c=0.28  │  + key metrics
+└──────────┴──────────┴──────────┴──────────┘
+              ↓ click EP 2
+┌────────────────────────────────────────────┐
+│            EP 2 — FULLSCREEN               │
+│   [2D crease]          [3D folded mesh]    │
+│   Full metrics dashboard                   │
+│   Fold history list                        │
+│   [Back to Grid]                           │
+└────────────────────────────────────────────┘
+
+Training ends → grid clears → switches to regular /viewer for demo
+```
+
+### 15.2 Why This Works (Not Computationally Complex)
+
+| Concern | Reality |
+|---------|---------|
+| Server CPU | Each episode = pure math (36 vertices, 50 faces). G=8 episodes ~0.8ms total |
+| Network | Each observation ~3KB JSON. G=8 × 20 steps = ~480KB per prompt. Negligible |
+| Browser GPU | G=8 mini renderers × 36 vertices = 288 vertices total. A game does 100K+ |
+| Browser memory | 8 Three.js scenes ≈ 10MB. Tab uses 200MB baseline. Trivial |
+| WebGL contexts | Browsers support 8-16 active contexts. G=8 fits. G>8 → use single canvas with viewports |
+
+### 15.3 Architecture
+
+```
+COLAB (Training Process)
+┌──────────────────────────────────────────────────────┐
+│                                                      │
+│  GRPOTrainer generates G completions per prompt      │
+│       ↓                                              │
+│  TrainingRunner (new)                                │
+│  ┌──────────────────────────────────────────────┐   │
+│  │  For each completion (can run parallel):      │   │
+│  │    env = OrigamiEnvironment()  ← in-process   │   │
+│  │    obs = env.reset()                          │   │
+│  │    broadcast(ep_id, obs) ───────────────────┐ │   │
+│  │    while not done:                          │ │   │
+│  │      fold = strategy(paper_state)           │ │   │
+│  │      obs = env.step(action)                 │ │   │
+│  │      broadcast(ep_id, obs) ─────────────────┤ │   │
+│  │    score = compute_reward(obs.metrics)       │ │   │
+│  │    broadcast(ep_id, {done, score}) ─────────┤ │   │
+│  └──────────────────────────────────────────────┘ │   │
+│       │                                           │   │
+│       ▼                                           │   │
+│  TrainingBroadcastServer (new, same FastAPI)      │   │
+│  ┌────────────────────────────────────────────┐   │   │
+│  │  /ws/training  ← viewers connect here      │   │   │
+│  │                                            │   │   │
+│  │  episode_registry: {                       │   │   │
+│  │    ep_id → {status, obs, score, task}      │   │   │
+│  │  }                                         │   │   │
+│  │                                            │◀──┘   │
+│  │  On update: broadcast to all viewers       │       │
+│  │  On viewer connect: send full registry     │       │
+│  └────────────────────────────────────────────┘       │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+         │ WebSocket
+         ▼
+BROWSER (Training Grid Viewer)
+┌──────────────────────────────────────────────────────┐
+│  /viewer/training.html                               │
+│                                                      │
+│  Connects to /ws/training                            │
+│  Receives: {type, episode_id, observation, status}   │
+│                                                      │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  CSS Grid: auto-fit, minmax(250px, 1fr)        │  │
+│  │  Each cell:                                    │  │
+│  │    - Mini Three.js scene (3D mesh only)        │  │
+│  │    - Status badge: 🔄 running / ✅ done / ❌    │  │
+│  │    - Key metrics: compactness, folds, reward   │  │
+│  │    - Click → fullscreen (same as /viewer)      │  │
+│  └────────────────────────────────────────────────┘  │
+│                                                      │
+│  Header: training progress, batch #, avg reward      │
+│  Auto-resize: G=4 → 2×2, G=8 → 4×2, G=16 → 4×4    │
+│  Episode lifecycle:                                  │
+│    new → animate in (fade) → running (blue border)   │
+│    → done+good (green) / done+bad (red)              │
+│    → next batch → clear + new episodes               │
+└──────────────────────────────────────────────────────┘
+```
+
+### 15.4 Key Design Decision: In-Process Envs, Not HTTP
+
+During training, the reward function does NOT call the HTTP server.
+It instantiates `OrigamiEnvironment()` directly in Python — zero network overhead.
+The broadcast is one-way: training process → viewers. Viewers are read-only spectators.
+
+```python
+# Training runs G episodes in-process (fast)
+env = OrigamiEnvironment()
+obs = env.reset(task_name="half_fold")
+
+# After each step, push observation to broadcast queue (async, non-blocking)
+broadcast_queue.put_nowait({"episode_id": ep_id, "observation": obs.model_dump()})
+
+# Separate asyncio task drains queue → pushes to viewer WebSockets
+```
+
+This means:
+- Training speed is NOT affected by viewers (broadcast is fire-and-forget)
+- Viewers can connect/disconnect freely without impacting training
+- If no viewers are connected, observations are simply dropped (no queue buildup)
+
+### 15.5 WebSocket Protocol: `/ws/training`
+
+```
+Viewer → Server:
+  (no messages — viewer is read-only spectator)
+
+Server → Viewer (on connect):
+  {
+    "type": "registry",
+    "batch_id": 12,
+    "episodes": {
+      "ep_abc": {"status": "running", "task": "half_fold", "step": 3,
+                 "observation": {...}, "metrics": {...}},
+      "ep_def": {"status": "done", "task": "half_fold", "step": 5,
+                 "observation": {...}, "metrics": {...}, "score": 20.0},
+      ...
+    }
+  }
+
+Server → Viewer (on episode update):
+  {
+    "type": "episode_update",
+    "episode_id": "ep_abc",
+    "step": 4,
+    "status": "running",
+    "observation": {
+      "paper_state": {...},   ← Three.js renders this
+      "metrics": {...},
+      "fold_history": [...]
+    }
+  }
+
+Server → Viewer (on episode complete):
+  {
+    "type": "episode_done",
+    "episode_id": "ep_abc",
+    "status": "success",       ← or "timeout", "error"
+    "score": 20.0,
+    "final_metrics": {...}
+  }
+
+Server → Viewer (on new batch):
+  {
+    "type": "batch_start",
+    "batch_id": 13,
+    "num_episodes": 4,
+    "prompt_index": 42
+  }
+
+Server → Viewer (on batch complete):
+  {
+    "type": "batch_done",
+    "batch_id": 13,
+    "scores": [20.0, 5.0, 2.0, -1.0],
+    "best_episode_id": "ep_xyz",
+    "avg_score": 6.5
+  }
+
+Server → Viewer (on training end):
+  {
+    "type": "training_done",
+    "total_batches": 100,
+    "best_score": 20.0
+  }
+```
+
+### 15.6 New Files Needed
+
+```
+origami_env/
+├── server/
+│   ├── app.py                      # UPDATE: mount training.html, add /ws/training
+│   └── training_broadcast.py       # NEW: TrainingBroadcastServer class
+│       - episode_registry: Dict[str, EpisodeInfo]
+│       - spectator_clients: List[WebSocket]
+│       - publish(episode_id, data) → broadcast to all spectators
+│       - connect_spectator(ws) → send registry snapshot
+│       - disconnect_spectator(ws)
+│       - clear_batch() → reset registry for next batch
+│
+├── training/
+│   ├── train_grpo.py               # UPDATE: integrate TrainingRunner
+│   └── runner.py                   # NEW: parallel episode executor with broadcast
+│       - run_episode(strategy_fn, task, broadcast_fn) → score
+│       - run_batch(strategies: List, broadcast_fn) → scores
+│       - Uses ThreadPoolExecutor for G parallel episodes
+│       - Each step calls broadcast_fn(ep_id, obs)
+│
+└── viewer/
+    ├── index.html                  # UNCHANGED — single session demo viewer
+    └── training.html               # NEW — training grid viewer
+        - CSS grid layout (auto-fit columns)
+        - Mini Three.js renderer per episode cell
+        - Status badges + key metrics per cell
+        - Click-to-fullscreen with [Back to Grid] button
+        - Training progress header bar
+        - Auto-clear on batch_start, auto-populate on episode_update
+```
+
+### 15.7 Changes to Existing Files
+
+**`server/app.py`** — Add training broadcast endpoint:
+```python
+from .training_broadcast import TrainingBroadcastServer
+
+broadcast = TrainingBroadcastServer()
+
+@app.websocket("/ws/training")
+async def training_ws(websocket):
+    await broadcast.connect_spectator(websocket)
+
+# Mount training viewer
+app.mount("/viewer", StaticFiles(directory=viewer_dir, html=True), name="viewer")
+# training.html served at /viewer/training.html automatically
+```
+
+**`training/train_grpo.py`** — Add broadcast hook to fold_quality:
+```python
+from origami_env.server.training_broadcast import TrainingBroadcastServer
+
+# In fold_quality reward function:
+# After each env.step(), call:
+#   broadcast.publish(episode_id, obs)
+# This is fire-and-forget; if no viewers, it's a no-op
+```
+
+### 15.8 Grid Viewer Rendering Strategy
+
+For G ≤ 8: **One WebGL context per cell**
+- Each cell gets a small Three.js renderer (250×200px)
+- 8 contexts × 36 vertices = trivial
+- Orbit controls disabled in grid (too small), enabled in fullscreen
+
+For G > 8 (unlikely but handled): **Single canvas with viewport splitting**
+- One large Three.js renderer
+- Use `renderer.setScissor()` + `renderer.setViewport()` per cell
+- Render each scene into its own region
+- More efficient, one WebGL context
+
+**Fullscreen transition:**
+```
+Click cell → CSS class "fullscreen" on that cell
+  → cell expands to 100vw × 100vh (CSS transition)
+  → renderer.setSize(window.innerWidth, window.innerHeight)
+  → show 2D crease panel + full metrics (hidden in grid mode)
+  → show [Back to Grid] button
+Click [Back to Grid] → remove "fullscreen" class → shrink back
+```
+
+### 15.9 Episode Cell Layout (Grid Mode)
+
+```
+┌─────────────────────────┐
+│ EP abc  🔄 running      │  ← header: ID + status badge
+│ ┌─────────────────────┐ │
+│ │                     │ │
+│ │   Mini 3D Mesh      │ │  ← Three.js renderer (~200px tall)
+│ │   (strain colors)   │ │
+│ │                     │ │
+│ └─────────────────────┘ │
+│ step 3 │ c=0.52 │ ✓     │  ← footer: step count, compactness, valid
+└─────────────────────────┘
+```
+
+### 15.10 TODO
+
+- [x] Create `server/training_broadcast.py` (broadcast server + episode registry)
+- [x] Create `training/runner.py` (parallel episode executor with broadcast hooks)
+- [x] Create `viewer/training.html` (grid viewer with mini Three.js renderers)
+- [x] Update `server/app.py` (add `/ws/training` endpoint, mount training viewer)
+- [x] Update `training/train_grpo.py` (integrate runner + broadcast + demo mode)
+- [x] Test: G=4 parallel episodes — scores=[19.5, -9.7, -0.5, -5.0] ✓
+- [x] Test: /ws/training endpoint registered, training.html served ✓
+- [x] Test: registry snapshot has 4 episodes after batch ✓
+- [x] Test: live WebSocket broadcast — 22 msgs, all 8 types, 4 resets, 9 updates, 4 dones ✓
+- [x] Test: fullscreen toggle — code review verified: click→openFullscreen, Back/Esc→close, 2D+3D+metrics render

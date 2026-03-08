@@ -24,6 +24,7 @@ import numpy as np
 
 from origami_env.server.models import OrigamiAction, OrigamiObservation
 from origami_env.client.client import OrigamiEnvClient
+from origami_env.training.runner import TrainingRunner
 
 
 # ── Server launch config ───────────────────────────────────
@@ -208,36 +209,172 @@ def fold_quality(completions, **kwargs):
     return scores
 
 
+# ── Demo: run sample strategies with broadcast ──────────────
+
+def demo_strategies():
+    """Six strategies inspired by classic origami patterns (Origami Simulator style).
+
+    Each produces visually distinct folding in the 3D viewer:
+    1. Half fold — single horizontal valley
+    2. Quarter fold — two perpendicular valleys (book fold)
+    3. Diagonal — mountain fold corner-to-corner
+    4. Letter fold — tri-fold parallel valleys
+    5. Miura-ori inspired — zigzag grid (alternating M/V)
+    6. Waterbomb base — diagonal cross + perpendicular cross
+    """
+
+    def strategy_half(paper_state):
+        """Simple horizontal valley fold — clean half."""
+        if paper_state.get("fold_count", 0) >= 1:
+            return None
+        return {"type": "valley", "line": {"start": [0, 0.5], "end": [1, 0.5]}, "angle": 180}
+
+    def strategy_quarter(paper_state):
+        """Two perpendicular folds — quarter compression."""
+        fc = paper_state.get("fold_count", 0)
+        if fc == 0:
+            return {"type": "valley", "line": {"start": [0, 0.5], "end": [1, 0.5]}, "angle": 180}
+        elif fc == 1:
+            return {"type": "valley", "line": {"start": [0.5, 0], "end": [0.5, 1]}, "angle": 180}
+        return None
+
+    def strategy_diagonal(paper_state):
+        """Diagonal mountain fold — triangle shape."""
+        if paper_state.get("fold_count", 0) >= 1:
+            return None
+        return {"type": "mountain", "line": {"start": [0, 0], "end": [1, 1]}, "angle": 180}
+
+    def strategy_letter(paper_state):
+        """Tri-fold — like folding a letter into an envelope."""
+        fc = paper_state.get("fold_count", 0)
+        if fc == 0:
+            return {"type": "valley", "line": {"start": [0, 0.33], "end": [1, 0.33]}, "angle": 180}
+        elif fc == 1:
+            return {"type": "valley", "line": {"start": [0, 0.66], "end": [1, 0.66]}, "angle": 180}
+        return None
+
+    def strategy_miura(paper_state):
+        """Miura-ori inspired — zigzag alternating M/V grid for max compression."""
+        fc = paper_state.get("fold_count", 0)
+        folds = [
+            {"type": "valley", "line": {"start": [0, 0.33], "end": [1, 0.33]}, "angle": 180},
+            {"type": "mountain", "line": {"start": [0, 0.66], "end": [1, 0.66]}, "angle": 180},
+            {"type": "valley", "line": {"start": [0.33, 0], "end": [0.33, 1]}, "angle": 180},
+            {"type": "mountain", "line": {"start": [0.66, 0], "end": [0.66, 1]}, "angle": 180},
+        ]
+        if fc < len(folds):
+            return folds[fc]
+        return None
+
+    def strategy_waterbomb(paper_state):
+        """Waterbomb base — diagonal cross then perpendicular cross."""
+        fc = paper_state.get("fold_count", 0)
+        folds = [
+            {"type": "valley", "line": {"start": [0, 0], "end": [1, 1]}, "angle": 180},
+            {"type": "valley", "line": {"start": [1, 0], "end": [0, 1]}, "angle": 180},
+            {"type": "mountain", "line": {"start": [0, 0.5], "end": [1, 0.5]}, "angle": 180},
+            {"type": "mountain", "line": {"start": [0.5, 0], "end": [0.5, 1]}, "angle": 180},
+        ]
+        if fc < len(folds):
+            return folds[fc]
+        return None
+
+    return [strategy_half, strategy_quarter, strategy_diagonal,
+            strategy_letter, strategy_miura, strategy_waterbomb]
+
+
 # ── Main training loop ──────────────────────────────────────
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("Origami RL — GRPO Training")
-    print("=" * 60)
-    print()
-    print("This script follows the 2048 Unsloth/OpenEnv pattern.")
-    print("Run on Colab with GPU. Requires: unsloth, trl, openenv-core")
-    print()
-    print("Steps:")
-    print("1. Install deps: pip install unsloth trl openenv-core")
-    print("2. Launch: python -m origami_env.training.train_grpo")
-    print()
+    import argparse
+    parser = argparse.ArgumentParser(description="Origami RL — GRPO Training")
+    parser.add_argument("--demo", action="store_true", help="Run demo batch with sample strategies (tests grid viewer)")
+    parser.add_argument("--demo-batches", type=int, default=3, help="Number of demo batches to run")
+    parser.add_argument("--port", type=int, default=8000, help="Server port for broadcast")
+    args = parser.parse_args()
 
-    # The actual training code would go here, following the 2048 pattern:
-    #
-    # from unsloth import FastLanguageModel, is_port_open, launch_openenv
-    # model, tokenizer = FastLanguageModel.from_pretrained(...)
-    # model = FastLanguageModel.get_peft_model(model, ...)
-    #
-    # launch_openenv = functools.partial(launch_openenv, server=server, ...)
-    # port, openenv_process = launch_openenv(port, openenv_process)
-    #
-    # dataset = Dataset.from_list([{"prompt": [...], ...}] * 1000)
-    # trainer = GRPOTrainer(
-    #     model=model, processing_class=tokenizer,
-    #     reward_funcs=[code_valid, no_cheating, fold_quality],
-    #     args=GRPOConfig(...), train_dataset=dataset,
-    # )
-    # trainer.train()
+    if args.demo:
+        import time
+        import threading
+        import uvicorn
 
-    print("Training script ready. See comments for full Colab integration.")
+        print("=" * 60, flush=True)
+        print("Origami RL — Demo Mode (Training Grid Viewer)", flush=True)
+        print("=" * 60, flush=True)
+        print(flush=True)
+        print(f"Starting server on http://127.0.0.1:{args.port}", flush=True)
+        print(f"Open http://127.0.0.1:{args.port}/viewer/training.html in your browser", flush=True)
+        print(flush=True)
+
+        # Start the server in a background thread
+        from origami_env.server.app import app, broadcast
+
+        server_thread = threading.Thread(
+            target=uvicorn.run,
+            kwargs={"app": app, "host": "127.0.0.1", "port": args.port, "log_level": "warning"},
+            daemon=True,
+        )
+        server_thread.start()
+        time.sleep(1)
+
+        # Create runner with broadcast
+        runner = TrainingRunner(broadcast=broadcast, task_name="half_fold")
+        broadcast.start_training()
+
+        strategies = demo_strategies()
+
+        for batch_idx in range(args.demo_batches):
+            print(f"\n--- Batch {batch_idx + 1}/{args.demo_batches} ---", flush=True)
+            scores = runner.run_batch(strategies, batch_id=batch_idx + 1)
+            print(f"Scores: {scores}", flush=True)
+            print(f"Avg: {sum(scores)/len(scores):.2f}, Best: {max(scores):.2f}", flush=True)
+            time.sleep(2)  # Pause between batches so viewer can show results
+
+        broadcast.end_training(total_batches=args.demo_batches, best_score=max(max(s) for s in [scores]))
+        print("\nDemo complete. Server still running for viewer. Ctrl+C to exit.")
+
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+    else:
+        print("=" * 60)
+        print("Origami RL — GRPO Training")
+        print("=" * 60)
+        print()
+        print("This script follows the 2048 Unsloth/OpenEnv pattern.")
+        print("Run on Colab with GPU. Requires: unsloth, trl, openenv-core")
+        print()
+        print("Steps:")
+        print("1. Install deps: pip install unsloth trl openenv-core")
+        print("2. Launch: python -m origami_env.training.train_grpo")
+        print("3. Demo mode: python -m origami_env.training.train_grpo --demo")
+        print()
+
+        # The actual training code would go here, following the 2048 pattern:
+        #
+        # from unsloth import FastLanguageModel, is_port_open, launch_openenv
+        # model, tokenizer = FastLanguageModel.from_pretrained(...)
+        # model = FastLanguageModel.get_peft_model(model, ...)
+        #
+        # launch_openenv = functools.partial(launch_openenv, server=server, ...)
+        # port, openenv_process = launch_openenv(port, openenv_process)
+        #
+        # from origami_env.server.app import broadcast
+        # runner = TrainingRunner(broadcast=broadcast, task_name="half_fold")
+        # broadcast.start_training()
+        #
+        # # In fold_quality reward function, use runner.run_episode() instead of
+        # # direct _execute_strategy() to get broadcast support.
+        #
+        # dataset = Dataset.from_list([{"prompt": [...], ...}] * 1000)
+        # trainer = GRPOTrainer(
+        #     model=model, processing_class=tokenizer,
+        #     reward_funcs=[code_valid, no_cheating, fold_quality],
+        #     args=GRPOConfig(...), train_dataset=dataset,
+        # )
+        # trainer.train()
+        # broadcast.end_training()
+
+        print("Training script ready. See comments for full Colab integration.")

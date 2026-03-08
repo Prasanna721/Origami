@@ -88,7 +88,7 @@ class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiS
             width=self._task["width"],
             height=self._task["height"],
             material=mat_obj,
-            subdivisions=kwargs.get("subdivisions", 4),
+            subdivisions=kwargs.get("subdivisions", 2),
         )
 
         # Initial validation + metrics
