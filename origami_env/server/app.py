@@ -1,6 +1,7 @@
 """FastAPI entry point — OpenEnv create_app() + static viewer."""
 
 import os
+from pathlib import Path
 
 from openenv.core import create_app
 
@@ -15,7 +16,7 @@ app = create_app(
     max_concurrent_envs=4,
 )
 
-# Task list endpoint for the viewer
+# Task list endpoints (registered BEFORE static mount so they take priority)
 from .tasks import TASKS
 
 
@@ -51,21 +52,19 @@ def get_task_detail(task_name: str):
     }
 
 
-# Serve Three.js viewer as static files at /viewer only.
-# Do NOT mount at /web — OpenEnv's built-in web interface uses /web when
-# ENABLE_WEB_INTERFACE=true (set by `openenv push` for HF Spaces deployment).
+# Serve Three.js viewer — static mount at / must come LAST (catch-all)
 from fastapi.staticfiles import StaticFiles
 
-viewer_dir = os.path.join(os.path.dirname(__file__), "..", "viewer")
-if os.path.isdir(viewer_dir):
-    app.mount("/viewer", StaticFiles(directory=viewer_dir, html=True), name="viewer")
+viewer_dir = Path(__file__).resolve().parent.parent / "viewer"
+if viewer_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(viewer_dir), html=True), name="viewer")
 
 
 def main():
     """Entry point for openenv serve / uv run."""
     import uvicorn
 
-    port = int(os.environ.get("PORT", 7860))
+    port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
