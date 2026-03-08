@@ -1,12 +1,12 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "origami-env"
 version = "0.1.0"
-description = "OpenEnv-compatible origami folding RL environment"
-requires-python = ">=3.10"
+description = "RL environment for origami folding — LLM generates FOLD crease patterns"
+requires-python = ">=3.11"
 dependencies = [
     "openenv-core>=0.2.1",
     "numpy>=1.24",
@@ -14,18 +14,19 @@ dependencies = [
     "pydantic>=2.0",
     "fastapi>=0.100",
     "uvicorn>=0.22",
-    "websockets>=11.0",
-    "requests>=2.28",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "httpx>=0.24",
 ]
 
 [project.scripts]
-server = "origami_env.server.app:main"
+server = "server.app:main"
+
+[project.optional-dependencies]
+training = [
+    "trl>=0.7",
+    "datasets>=2.14",
+    "unsloth",
+    "torch",
+    "transformers",
+]
 
 [tool.setuptools.packages.find]
-include = ["origami_env*"]
+where = ["."]

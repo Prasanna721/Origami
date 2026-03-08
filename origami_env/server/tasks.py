@@ -1,158 +1,111 @@
-"""Task pool, curriculum levels, difficulty sampling."""
-from __future__ import annotations
+"""Task definitions for origami RL training.
 
-import random
-from typing import Any, Dict, List, Optional
+Each task defines a target shape as a reference FOLD crease pattern.
+The LLM must discover a crease pattern that folds into the same shape.
 
+Starting simple (triangle) and progressing to harder folds.
+"""
 
-# ── Task Definitions ─────────────────────────────────────────
-# Level 1: Learn the format
-# Level 2: Parallel/grid folds
-# Level 3: Real-world applications with material constraints
-# Level 4: Complex geometry targets
-
-TASK_POOL: List[Dict[str, Any]] = [
-    # ── Level 1 ──────────────────────────────────────────────
-    {
+TASKS: dict[str, dict] = {
+    "triangle": {
+        "name": "triangle",
+        "description": "Fold the paper in half diagonally to make a triangle",
+        "difficulty": 1,
+        "paper": {"width": 1.0, "height": 1.0},
+        "target_fold": {
+            "vertices_coords": [[0, 0], [1, 0], [1, 1], [0, 1]],
+            "edges_vertices": [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]],
+            "edges_assignment": ["B", "B", "B", "B", "V"],
+            "edges_foldAngle": [0, 0, 0, 0, 180],
+        },
+    },
+    "half_fold": {
         "name": "half_fold",
-        "description": "Fold a paper sheet in half. Simplest possible task.",
+        "description": "Fold the paper in half horizontally",
         "difficulty": 1,
-        "width": 1.0,
-        "height": 1.0,
-        "material": "paper",
-        "target_ratio": 0.50,
-        "max_folds": 3,
-        "target_box": [1.0, 0.5, 0.01],
-        "must_deploy": False,
+        "paper": {"width": 1.0, "height": 1.0},
+        "target_fold": {
+            "vertices_coords": [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0.5], [1, 0.5]],
+            "edges_vertices": [
+                [0, 1], [1, 5], [5, 4], [4, 0],  # bottom half boundary
+                [4, 3], [3, 2], [2, 5],  # top half boundary
+                [4, 5],  # fold line
+            ],
+            "edges_assignment": ["B", "B", "B", "B", "B", "B", "B", "V"],
+            "edges_foldAngle": [0, 0, 0, 0, 0, 0, 0, 180],
+        },
     },
-    {
+    "quarter_fold": {
         "name": "quarter_fold",
-        "description": "Fold paper into quarters using two perpendicular folds.",
-        "difficulty": 1,
-        "width": 1.0,
-        "height": 1.0,
-        "material": "paper",
-        "target_ratio": 0.25,
-        "max_folds": 5,
-        "target_box": [0.5, 0.5, 0.02],
-        "must_deploy": False,
+        "description": "Fold the paper into quarters (two perpendicular folds)",
+        "difficulty": 2,
+        "paper": {"width": 1.0, "height": 1.0},
+        "target_fold": {
+            "vertices_coords": [
+                [0, 0], [0.5, 0], [1, 0],
+                [0, 0.5], [0.5, 0.5], [1, 0.5],
+                [0, 1], [0.5, 1], [1, 1],
+            ],
+            "edges_vertices": [
+                # Boundary
+                [0, 1], [1, 2], [2, 5], [5, 8], [8, 7], [7, 6], [6, 3], [3, 0],
+                # Fold lines
+                [1, 4], [4, 7],  # vertical fold
+                [3, 4], [4, 5],  # horizontal fold
+            ],
+            "edges_assignment": [
+                "B", "B", "B", "B", "B", "B", "B", "B",
+                "V", "V",
+                "V", "V",
+            ],
+            "edges_foldAngle": [
+                0, 0, 0, 0, 0, 0, 0, 0,
+                180, 180,
+                180, 180,
+            ],
+        },
     },
-
-    # ── Level 2 ──────────────────────────────────────────────
-    {
+    "letter_fold": {
         "name": "letter_fold",
-        "description": "Tri-fold a letter-sized sheet for envelope fitting.",
+        "description": "Tri-fold the paper like a letter (two parallel folds)",
         "difficulty": 2,
-        "width": 0.216,  # ~8.5 inches
-        "height": 0.279,  # ~11 inches
-        "material": "paper",
-        "target_ratio": 0.33,
-        "max_folds": 5,
-        "target_box": [0.216, 0.093, 0.005],
-        "must_deploy": False,
+        "paper": {"width": 1.0, "height": 1.0},
+        "target_fold": {
+            "vertices_coords": [
+                [0, 0], [1, 0],
+                [0, 1/3], [1, 1/3],
+                [0, 2/3], [1, 2/3],
+                [0, 1], [1, 1],
+            ],
+            "edges_vertices": [
+                # Boundary
+                [0, 1], [1, 3], [3, 5], [5, 7], [7, 6], [6, 4], [4, 2], [2, 0],
+                # Fold lines
+                [2, 3],  # first fold
+                [4, 5],  # second fold
+            ],
+            "edges_assignment": [
+                "B", "B", "B", "B", "B", "B", "B", "B",
+                "V", "V",
+            ],
+            "edges_foldAngle": [
+                0, 0, 0, 0, 0, 0, 0, 0,
+                180, -180,
+            ],
+        },
     },
-    {
-        "name": "map_fold",
-        "description": "Fold a map sheet into a compact grid. Must be deployable (unfoldable).",
-        "difficulty": 2,
-        "width": 1.0,
-        "height": 1.0,
-        "material": "paper",
-        "target_ratio": 0.125,
-        "max_folds": 8,
-        "target_box": [0.25, 0.25, 0.02],
-        "must_deploy": True,
-    },
-
-    # ── Level 3 ──────────────────────────────────────────────
-    {
-        "name": "solar_panel",
-        "description": (
-            "Pack a 1m x 1m Mylar solar panel into a compact package for satellite deployment. "
-            "Must be deployable. Aim for Miura-ori or similar efficient pattern."
-        ),
-        "difficulty": 3,
-        "width": 1.0,
-        "height": 1.0,
-        "material": "mylar",
-        "target_ratio": 0.05,
-        "max_folds": 20,
-        "target_box": [0.15, 0.15, 0.05],
-        "must_deploy": True,
-    },
-    {
-        "name": "shelter_wall",
-        "description": (
-            "Fold a 2m x 1m aluminum sheet into a compact panel for deployable shelter. "
-            "Rigid material — minimize strain at creases."
-        ),
-        "difficulty": 3,
-        "width": 2.0,
-        "height": 1.0,
-        "material": "aluminum",
-        "target_ratio": 0.10,
-        "max_folds": 15,
-        "target_box": [0.5, 0.25, 0.1],
-        "must_deploy": True,
-    },
-
-    # ── Level 4 ──────────────────────────────────────────────
-    {
-        "name": "stent",
-        "description": (
-            "Fold a 0.1m x 0.05m nitinol sheet into a compact stent-like structure. "
-            "Superelastic material — high strain tolerance. "
-            "Must fit in a small delivery catheter."
-        ),
-        "difficulty": 4,
-        "width": 0.1,
-        "height": 0.05,
-        "material": "nitinol",
-        "target_ratio": 0.09,
-        "max_folds": 25,
-        "target_box": [0.02, 0.02, 0.01],
-        "must_deploy": True,
-    },
-]
+}
 
 
-def get_task_pool() -> List[Dict[str, Any]]:
-    """Return the full task pool."""
-    return TASK_POOL
+def get_task(name: str | None = None) -> dict:
+    """Get a task by name. Defaults to 'triangle'."""
+    if name is None:
+        name = "triangle"
+    if name not in TASKS:
+        raise ValueError(f"Unknown task '{name}'. Available: {list(TASKS.keys())}")
+    return TASKS[name]
 
 
-def get_tasks_by_difficulty(level: int) -> List[Dict[str, Any]]:
-    """Get tasks at a specific difficulty level."""
-    return [t for t in TASK_POOL if t["difficulty"] == level]
-
-
-def get_task_by_name(name: str) -> Optional[Dict[str, Any]]:
-    """Get a task by name."""
-    for t in TASK_POOL:
-        if t["name"] == name:
-            return t.copy()
-    return None
-
-
-def sample_task(
-    seed: Optional[int] = None,
-    difficulty: Optional[int] = None,
-) -> Dict[str, Any]:
-    """
-    Sample a random task from the pool.
-
-    Args:
-        seed: Random seed for reproducibility.
-        difficulty: If given, only sample from that difficulty level.
-    """
-    rng = random.Random(seed)
-
-    if difficulty is not None:
-        pool = get_tasks_by_difficulty(difficulty)
-    else:
-        pool = TASK_POOL
-
-    if not pool:
-        pool = TASK_POOL
-
-    return rng.choice(pool).copy()
+def list_tasks() -> list[str]:
+    """List all available task names."""
+    return list(TASKS.keys())

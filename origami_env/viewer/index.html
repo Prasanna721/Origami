@@ -3,915 +3,916 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Origami RL — Viewer</title>
+<title>Origami RL</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=Instrument+Serif:ital@0;1&display=swap');
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --border: #e8e4df;
+  --border-hover: #c9c3ba;
+  --text: #1a1816;
+  --text-secondary: #7a756e;
+  --text-tertiary: #a9a49d;
+  --mountain: #c0392b;
+  --valley: #2471a3;
+  --boundary: #1a1816;
+  --accent: #c0392b;
+  --accent-soft: #f5eeec;
+  --success: #27ae60;
+  --shadow-sm: 0 1px 3px rgba(26,24,22,0.04);
+  --shadow-md: 0 4px 16px rgba(26,24,22,0.06);
+  --shadow-lg: 0 8px 32px rgba(26,24,22,0.08);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: #fafafa;
-  color: #1a1a1a;
-  line-height: 1.5;
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
-.app {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto auto 1fr auto;
-  height: 100vh;
-  gap: 0;
-}
-
-/* ── Header ──────────────────────────────────────── */
+/* --- HEADER --- */
 header {
-  grid-column: 1 / -1;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 0 24px;
-  height: 52px;
+  padding: 32px 48px 24px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-header h1 {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1a1a1a;
-  letter-spacing: -0.01em;
-}
-
-header h1 span {
-  color: #3b82f6;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 16px;
 }
 
-.status-badge {
+header h1 {
+  font-family: 'Instrument Serif', serif;
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+header span {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-weight: 300;
+}
+
+/* --- GRID VIEW --- */
+#grid-view {
+  padding: 0 48px 64px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+  max-width: 1280px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+}
+
+.card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.card-canvas {
+  width: 100%;
+  height: 200px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.card-canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.card-info {
+  padding: 16px 20px;
+}
+
+.card-name {
+  font-family: 'Instrument Serif', serif;
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.card-desc {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  font-weight: 300;
+}
+
+.card-score {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #d1d5db;
-  transition: background 0.3s;
+.score-bar-bg {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
-.status-dot.connected { background: #22c55e; }
+.score-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-/* ── Error bar ───────────────────────────────────── */
-#error-bar {
-  grid-column: 1 / -1;
-  background: #fef2f2;
-  border-bottom: 1px solid #fecaca;
-  color: #dc2626;
-  padding: 8px 24px;
-  font-size: 13px;
+.score-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* --- DETAIL VIEW --- */
+#detail-view {
+  display: none;
+  height: 100vh;
+  flex-direction: column;
+}
+
+#detail-view.active {
+  display: flex;
+}
+
+#grid-view.hidden {
   display: none;
 }
 
-#error-bar.success {
-  background: #f0fdf4;
-  border-bottom-color: #bbf7d0;
-  color: #16a34a;
+.detail-header {
+  padding: 20px 32px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
-/* ── Panels ──────────────────────────────────────── */
-.panel {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-top: none;
-  position: relative;
+.back-btn {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.detail-title {
+  font-family: 'Instrument Serif', serif;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.detail-subtitle {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 300;
+  margin-left: auto;
+}
+
+.detail-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
   min-height: 0;
 }
 
-.panel:first-of-type { border-right: none; }
-
-.panel-title {
-  font-size: 11px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #9ca3af;
-  padding: 10px 16px;
-  border-bottom: 1px solid #f3f4f6;
-  flex-shrink: 0;
-}
-
-#crease-canvas {
-  flex: 1;
-  width: 100%;
-  display: block;
-}
-
-#three-container {
-  flex: 1;
-  width: 100%;
-}
-
-/* ── Controls ────────────────────────────────────── */
-.controls-bar {
-  grid-column: 1 / -1;
-  background: #ffffff;
-  border-top: 1px solid #e5e7eb;
-  padding: 12px 24px;
+/* 2D crease pattern panel */
+.panel-2d {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
+  flex-direction: column;
 }
 
-.control-group {
+.panel-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  padding: 16px 24px 8px;
+  font-weight: 500;
+}
+
+.crease-canvas {
+  flex: 1;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crease-canvas svg {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.legend {
+  padding: 12px 24px 20px;
+  display: flex;
+  gap: 20px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.legend-item {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.control-group label {
-  font-size: 11px;
-  font-weight: 500;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
+.legend-swatch {
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
 }
 
-.control-group select,
-.control-group input[type="number"] {
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  color: #1a1a1a;
-  padding: 5px 8px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.control-group select:focus,
-.control-group input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-}
-
-.control-group input[type="number"] { width: 60px; }
-
-.control-group input[type="range"] {
-  width: 100px;
-  accent-color: #3b82f6;
-}
-
-.control-group .range-val {
-  font-size: 12px;
-  font-weight: 500;
-  color: #374151;
-  min-width: 32px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.spacer { flex: 1; }
-
-button {
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 6px 14px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: none;
-}
-
-button.primary {
-  background: #3b82f6;
-  color: #ffffff;
-}
-button.primary:hover { background: #2563eb; }
-
-button.secondary {
-  background: #ffffff;
-  color: #374151;
-  border: 1px solid #d1d5db;
-}
-button.secondary:hover { background: #f9fafb; border-color: #9ca3af; }
-
-button.ghost {
-  background: transparent;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
-}
-button.ghost:hover { background: #f3f4f6; color: #374151; }
-
-/* ── File loading ────────────────────────────────── */
-.file-input { display: none; }
-
-/* ── Examples dropdown ───────────────────────────── */
-.examples-wrapper {
+/* 3D viewer panel */
+.panel-3d {
+  background: var(--bg);
   position: relative;
 }
 
-.examples-dropdown {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  margin-bottom: 4px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-  min-width: 200px;
-  max-height: 240px;
-  overflow-y: auto;
-  display: none;
-  z-index: 20;
+.panel-3d canvas {
+  width: 100% !important;
+  height: 100% !important;
 }
 
-.examples-dropdown.open { display: block; }
-
-.examples-dropdown .example-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 14px;
-  font-size: 13px;
-  color: #374151;
-  background: none;
-  border: none;
-  border-radius: 0;
-  cursor: pointer;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.examples-dropdown .example-item:last-child { border-bottom: none; }
-.examples-dropdown .example-item:hover { background: #f3f4f6; color: #3b82f6; }
-
-.examples-dropdown .empty-msg {
-  padding: 12px 14px;
-  font-size: 12px;
-  color: #9ca3af;
-}
-
-/* ── Metrics ─────────────────────────────────────── */
-.metrics-bar {
-  grid-column: 1 / -1;
-  background: #ffffff;
-  border-top: 1px solid #e5e7eb;
-  padding: 10px 24px;
+/* Slider */
+.slider-bar {
+  padding: 16px 32px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
 }
 
-.metric-card {
-  background: #f9fafb;
-  border: 1px solid #f3f4f6;
-  border-radius: 6px;
-  padding: 6px 12px;
-  min-width: 100px;
+.slider-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 300;
+  min-width: 40px;
 }
 
-.metric-card .label {
-  font-size: 10px;
+.slider-track {
+  flex: 1;
+  position: relative;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.slider-value {
+  font-size: 13px;
   font-weight: 500;
+  color: var(--text);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Metrics */
+.metrics-bar {
+  padding: 12px 32px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 40px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-label {
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #9ca3af;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
 }
 
-.metric-card .value {
+.metric-value {
   font-size: 16px;
-  font-weight: 600;
-  color: #1a1a1a;
-  margin-top: 1px;
-  font-variant-numeric: tabular-nums;
+  font-weight: 500;
 }
 
-.metric-card .value.good { color: #16a34a; }
-.metric-card .value.bad { color: #dc2626; }
-.metric-card .value.warn { color: #d97706; }
+.metric-value.high { color: var(--success); }
+.metric-value.mid { color: #e67e22; }
+.metric-value.low { color: var(--accent); }
 
-/* ── Responsive ──────────────────────────────────── */
-@media (max-width: 768px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: auto auto 300px 300px auto auto; }
-  .panel:first-of-type { border-right: 1px solid #e5e7eb; }
-  .controls-bar { padding: 10px 12px; gap: 8px; }
+/* --- ANIMATIONS --- */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
+
+.card {
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.card:nth-child(1) { animation-delay: 0.05s; }
+.card:nth-child(2) { animation-delay: 0.1s; }
+.card:nth-child(3) { animation-delay: 0.15s; }
+.card:nth-child(4) { animation-delay: 0.2s; }
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <h1>Origami <span>RL</span></h1>
-    <div class="header-right">
-      <div class="status-badge">
-        <span class="status-dot" id="status-dot"></span>
-        <span id="status-label">Disconnected</span>
+
+<header>
+  <h1>Origami RL</h1>
+  <span>fold pattern explorer</span>
+</header>
+
+<!-- GRID VIEW -->
+<div id="grid-view">
+  <div class="grid" id="grid"></div>
+</div>
+
+<!-- DETAIL VIEW -->
+<div id="detail-view">
+  <div class="detail-header">
+    <button class="back-btn" onclick="showGrid()">← Back</button>
+    <div class="detail-title" id="detail-title"></div>
+    <div class="detail-subtitle" id="detail-subtitle"></div>
+  </div>
+  <div class="detail-body">
+    <div class="panel-2d">
+      <div class="panel-label">Crease Pattern</div>
+      <div class="crease-canvas" id="crease-2d"></div>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:var(--mountain)"></div>Mountain
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:var(--valley)"></div>Valley
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:var(--boundary)"></div>Boundary
+        </div>
       </div>
     </div>
-  </header>
-
-  <div id="error-bar"></div>
-
-  <div class="panel" id="crease-panel">
-    <div class="panel-title">Crease Pattern (2D)</div>
-    <canvas id="crease-canvas"></canvas>
+    <div class="panel-3d" id="panel-3d"></div>
   </div>
-
-  <div class="panel" id="three-panel">
-    <div class="panel-title">Folded State (3D)</div>
-    <div id="three-container"></div>
+  <div class="slider-bar">
+    <div class="slider-label">flat</div>
+    <div class="slider-track">
+      <input type="range" id="crease-slider" min="0" max="100" value="100">
+    </div>
+    <div class="slider-value" id="slider-val">100%</div>
+    <div class="slider-label">folded</div>
   </div>
-
-  <div class="controls-bar">
-    <div class="control-group">
-      <label>Task</label>
-      <select id="task-select">
-        <option value="half_fold">half_fold</option>
-        <option value="quarter_fold">quarter_fold</option>
-        <option value="letter_fold">letter_fold</option>
-        <option value="map_fold">map_fold</option>
-        <option value="solar_panel">solar_panel</option>
-        <option value="shelter_wall">shelter_wall</option>
-        <option value="stent">stent</option>
-      </select>
+  <div class="metrics-bar">
+    <div class="metric">
+      <div class="metric-label">Similarity</div>
+      <div class="metric-value high" id="m-sim">—</div>
     </div>
-
-    <button class="primary" id="btn-reset">Reset</button>
-
-    <div class="control-group">
-      <label>Fold %</label>
-      <input type="range" id="fold-pct" min="0" max="100" value="100">
-      <span class="range-val" id="fold-pct-val">100%</span>
+    <div class="metric">
+      <div class="metric-label">Folds</div>
+      <div class="metric-value" id="m-folds">—</div>
     </div>
-
-    <div class="spacer"></div>
-
-    <div class="control-group examples-wrapper">
-      <button class="ghost" id="btn-examples">Examples</button>
-      <div class="examples-dropdown" id="examples-dropdown"></div>
+    <div class="metric">
+      <div class="metric-label">Strain</div>
+      <div class="metric-value" id="m-strain">—</div>
     </div>
-
-    <input type="file" id="file-svg" accept=".svg" class="file-input">
-    <input type="file" id="file-fold" accept=".fold,.json" class="file-input">
-    <button class="ghost" id="btn-load-svg">Load SVG</button>
-    <button class="ghost" id="btn-load-fold">Load FOLD</button>
-
-    <div class="spacer"></div>
-
-    <div class="control-group">
-      <label>Type</label>
-      <select id="fold-type">
-        <option value="valley">Valley</option>
-        <option value="mountain">Mountain</option>
-      </select>
+    <div class="metric">
+      <div class="metric-label">Vertices</div>
+      <div class="metric-value" id="m-verts">—</div>
     </div>
-
-    <div class="control-group">
-      <label>X1</label><input id="lx1" type="number" value="0" min="0" max="1" step="0.1">
-      <label>Y1</label><input id="ly1" type="number" value="0.5" min="0" max="1" step="0.1">
-      <label>X2</label><input id="lx2" type="number" value="1" min="0" max="1" step="0.1">
-      <label>Y2</label><input id="ly2" type="number" value="0.5" min="0" max="1" step="0.1">
+    <div class="metric">
+      <div class="metric-label">Status</div>
+      <div class="metric-value" id="m-status">—</div>
     </div>
-
-    <div class="control-group">
-      <label>Angle</label>
-      <input id="fold-angle" type="number" value="180" min="0" max="180" step="10">
-    </div>
-
-    <button class="primary" id="btn-step">Fold</button>
-    <button class="secondary" id="btn-stop">Stop</button>
   </div>
-
-  <div class="metrics-bar" id="metrics-bar"></div>
 </div>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
   }
 }
 </script>
+
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// ── State ──────────────────────────────────────────────────
-let ws = null;
-let currentObs = null;
+// ─── FOLD DATA (hardcoded demo) ───────────────────────────────
+const TASKS = {
+  triangle: {
+    name: 'Triangle',
+    description: 'Diagonal valley fold',
+    difficulty: 1,
+    similarity: 1.0,
+    fold: {
+      vertices_coords: [[0,0],[1,0],[1,1],[0,1]],
+      edges_vertices: [[0,1],[1,2],[2,3],[3,0],[0,2]],
+      edges_assignment: ['B','B','B','B','V'],
+      edges_foldAngle: [0,0,0,0,180],
+      faces_vertices: [[0,1,2],[0,2,3]],
+    },
+    folded: [[-0.0384,0.2151,-0.1595],[0.8318,0.3444,0.3158],[0.9621,1.2146,-0.1594],[0.832,0.3443,0.3155]],
+    strain: 0.000012,
+  },
+  half_fold: {
+    name: 'Half Fold',
+    description: 'Horizontal valley fold',
+    difficulty: 1,
+    similarity: 1.0,
+    fold: {
+      vertices_coords: [[0,0],[1,0],[1,1],[0,1],[0,0.5],[1,0.5]],
+      edges_vertices: [[0,1],[1,5],[5,4],[4,0],[4,3],[3,2],[2,5],[4,5]],
+      edges_assignment: ['B','B','B','B','B','B','B','V'],
+      edges_foldAngle: [0,0,0,0,0,0,0,180],
+      faces_vertices: [[5,4,1],[1,4,0],[3,4,2],[4,5,2]],
+    },
+    folded: [[0.1034,0.1822,0.3165],[0.9623,0.439,-0.1071],[0.7102,0.649,-0.1865],[-0.2799,0.771,-0.3409],[-0.2134,0.4586,0.0439],[0.7382,0.6275,0.3065]],
+    strain: 0.013563,
+  },
+  quarter_fold: {
+    name: 'Quarter Fold',
+    description: 'Two perpendicular folds',
+    difficulty: 2,
+    similarity: 1.0,
+    fold: {
+      vertices_coords: [[0,0],[0.5,0],[1,0],[0,0.5],[0.5,0.5],[1,0.5],[0,1],[0.5,1],[1,1]],
+      edges_vertices: [[0,1],[1,2],[2,5],[5,8],[8,7],[7,6],[6,3],[3,0],[1,4],[4,7],[3,4],[4,5]],
+      edges_assignment: ['B','B','B','B','B','B','B','B','V','V','V','V'],
+      edges_foldAngle: [0,0,0,0,0,0,0,0,180,180,180,180],
+      faces_vertices: [[3,1,4],[1,3,0],[7,3,4],[3,7,6],[1,5,4],[5,1,2],[5,7,4],[7,5,8]],
+    },
+    folded: [[0.4728,0.4337,-0.0121],[0.5424,0.9479,0.0432],[0.3396,0.4756,-0.0323],[0.2759,0.8369,0.1366],[0.6256,0.4832,-0.0797],[0.4646,-0.0148,-0.0546],[0.6342,0.4654,0.0905],[0.5444,-0.0139,-0.098],[0.6093,0.4384,0.1097]],
+    strain: 0.084858,
+  },
+  letter_fold: {
+    name: 'Letter Fold',
+    description: 'Two parallel folds',
+    difficulty: 2,
+    similarity: 1.0,
+    fold: {
+      vertices_coords: [[0,0],[1,0],[0,0.3333],[1,0.3333],[0,0.6667],[1,0.6667],[0,1],[1,1]],
+      edges_vertices: [[0,1],[1,3],[3,5],[5,7],[7,6],[6,4],[4,2],[2,0],[2,3],[4,5]],
+      edges_assignment: ['B','B','B','B','B','B','B','B','V','V'],
+      edges_foldAngle: [0,0,0,0,0,0,0,0,180,-180],
+      faces_vertices: [[4,5,6],[5,7,6],[3,2,0],[1,3,0],[2,3,4],[3,5,4]],
+    },
+    folded: [[-0.1316,0.528,0.0347],[0.8062,0.6169,-0.2099],[0.0902,0.6436,-0.1978],[1.1189,0.6467,-0.2916],[0.1092,0.4791,0.0937],[1.0892,0.6426,0.0441],[0.0516,0.6871,-0.1593],[0.951,0.337,0.0957]],
+    strain: 0.033025,
+  },
+};
 
-// ── Three.js setup ─────────────────────────────────────────
-const container = document.getElementById('three-container');
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xfafafa);
+// ─── THREE.JS HELPERS ─────────────────────────────────────────
 
-const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
-camera.position.set(0.5, 1.5, 2.0);
+const EDGE_COLORS = { M: 0xc0392b, V: 0x2471a3, B: 0x1a1816, F: 0xddd8d0, U: 0xa9a49d };
 
-const renderer3d = new THREE.WebGLRenderer({ antialias: true });
-container.appendChild(renderer3d.domElement);
+function buildMesh(task, creasePercent = 1) {
+  const fold = task.fold;
+  const flat = fold.vertices_coords;
+  const folded = task.folded;
+  const n = flat.length;
+  const group = new THREE.Group();
 
-const controls = new OrbitControls(camera, renderer3d.domElement);
-controls.target.set(0.5, 0.5, 0);
-controls.enableDamping = true;
+  // Interpolate positions
+  const positions = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const fx = flat[i][0], fy = flat[i][1];
+    const tx = folded[i][0], ty = folded[i][1], tz = folded[i][2];
+    positions[i*3]   = fx + (tx - fx) * creasePercent;
+    positions[i*3+1] = fy + (ty - fy) * creasePercent;
+    positions[i*3+2] = (tz || 0) * creasePercent;
+  }
 
-// Lights
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-dirLight.position.set(2, 3, 2);
-scene.add(dirLight);
-const fillLight = new THREE.DirectionalLight(0xeef2ff, 0.3);
-fillLight.position.set(-2, 1, -1);
-scene.add(fillLight);
+  // Faces
+  const faces = fold.faces_vertices;
+  const indices = [];
+  for (const face of faces) {
+    for (let i = 1; i < face.length - 1; i++) {
+      indices.push(face[0], face[i], face[i+1]);
+    }
+  }
 
-// Mesh group
-let meshGroup = new THREE.Group();
-scene.add(meshGroup);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
 
-function resizeThree() {
-  const w = container.clientWidth;
-  const h = container.clientHeight;
-  if (w === 0 || h === 0) return;
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer3d.setSize(w, h);
-  renderer3d.setPixelRatio(window.devicePixelRatio);
+  const mat = new THREE.MeshPhongMaterial({
+    color: 0xfaf9f7,
+    side: THREE.DoubleSide,
+    flatShading: false,
+    shininess: 20,
+    specular: 0x222222,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  group.add(mesh);
+
+  // Edges
+  for (let i = 0; i < fold.edges_vertices.length; i++) {
+    const [v1, v2] = fold.edges_vertices[i];
+    const assignment = fold.edges_assignment[i];
+    const color = EDGE_COLORS[assignment] || 0xaaaaaa;
+    const lineGeo = new THREE.BufferGeometry();
+    const linePos = new Float32Array([
+      positions[v1*3], positions[v1*3+1], positions[v1*3+2],
+      positions[v2*3], positions[v2*3+1], positions[v2*3+2],
+    ]);
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+    const lineMat = new THREE.LineBasicMaterial({
+      color,
+      linewidth: assignment === 'B' ? 2 : 1,
+    });
+    group.add(new THREE.LineSegments(lineGeo, lineMat));
+  }
+
+  // Center
+  const box = new THREE.Box3().setFromObject(group);
+  const center = box.getCenter(new THREE.Vector3());
+  group.position.sub(center);
+
+  return group;
 }
-window.addEventListener('resize', resizeThree);
-setTimeout(resizeThree, 100);
 
-function animate() {
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer3d.render(scene, camera);
+function setupScene(container, opts = {}) {
+  const w = container.clientWidth || 300;
+  const h = container.clientHeight || 200;
+
+  const scene = new THREE.Scene();
+  scene.background = opts.bg ? new THREE.Color(opts.bg) : new THREE.Color(0xfaf9f7);
+
+  const camera = new THREE.PerspectiveCamera(35, w / h, 0.01, 100);
+  camera.position.set(0, 0.4, 2.2);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  // Lights
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  scene.add(ambientLight);
+  const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
+  dirLight1.position.set(1, 2, 3);
+  scene.add(dirLight1);
+  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  dirLight2.position.set(-2, 1, -1);
+  scene.add(dirLight2);
+
+  let controls = null;
+  if (opts.orbit) {
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.enablePan = false;
+    controls.minDistance = 0.8;
+    controls.maxDistance = 5;
+    controls.autoRotate = opts.autoRotate || false;
+    controls.autoRotateSpeed = 1.5;
+  }
+
+  return { scene, camera, renderer, controls };
 }
-animate();
 
-// ── 2D Crease Canvas ───────────────────────────────────────
-const creaseCanvas = document.getElementById('crease-canvas');
-const ctx = creaseCanvas.getContext('2d');
+// ─── GRID VIEW ────────────────────────────────────────────────
 
-function resizeCrease() {
-  const panel = document.getElementById('crease-panel');
-  const dpr = window.devicePixelRatio || 1;
-  const w = panel.clientWidth;
-  const h = panel.clientHeight - 36;
-  creaseCanvas.width = w * dpr;
-  creaseCanvas.height = h * dpr;
-  creaseCanvas.style.width = w + 'px';
-  creaseCanvas.style.height = h + 'px';
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (currentObs) drawCreasePattern(currentObs.paper_state);
+const gridEl = document.getElementById('grid');
+const cardScenes = [];
+
+for (const [key, task] of Object.entries(TASKS)) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-canvas" id="card-${key}"></div>
+    <div class="card-info">
+      <div class="card-name">${task.name}</div>
+      <div class="card-desc">${task.description} · difficulty ${task.difficulty}</div>
+      <div class="card-score">
+        <div class="score-bar-bg"><div class="score-bar-fill" style="width:${task.similarity * 100}%"></div></div>
+        <div class="score-label">${Math.round(task.similarity * 100)}%</div>
+      </div>
+    </div>
+  `;
+  card.addEventListener('click', () => showDetail(key));
+  gridEl.appendChild(card);
 }
-window.addEventListener('resize', resizeCrease);
-setTimeout(resizeCrease, 100);
 
-const EDGE_COLORS = { M: '#dc2626', V: '#3b82f6', B: '#374151', F: '#d1d5db', U: '#d1d5db' };
-const EDGE_WIDTHS = { M: 2, V: 2, B: 2.5, F: 0.5, U: 0.8 };
+// Init mini 3D scenes after DOM paint
+requestAnimationFrame(() => {
+  for (const [key, task] of Object.entries(TASKS)) {
+    const container = document.getElementById(`card-${key}`);
+    if (!container) continue;
+    const { scene, camera, renderer } = setupScene(container, { autoRotate: true });
+    const mesh = buildMesh(task, 1.0);
+    scene.add(mesh);
 
-function drawCreasePattern(ps) {
-  if (!ps || !ps.vertices_coords) return;
-  const w = creaseCanvas.width / (window.devicePixelRatio || 1);
-  const h = creaseCanvas.height / (window.devicePixelRatio || 1);
-  ctx.clearRect(0, 0, w, h);
+    // Slow auto-rotate
+    const animate = () => {
+      requestAnimationFrame(animate);
+      mesh.rotation.y += 0.005;
+      renderer.render(scene, camera);
+    };
+    animate();
+    cardScenes.push({ key, scene, camera, renderer, mesh });
+  }
+});
 
-  // Light background
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, w, h);
+// ─── DETAIL VIEW ──────────────────────────────────────────────
 
-  // Use rest_positions for 2D rendering if available, otherwise vertices_coords
-  const coords2d = ps.rest_positions || ps.vertices_coords;
-  const sheetW = ps.width || 1;
-  const sheetH = ps.height || 1;
-  const margin = 40;
-  const scale = Math.min((w - 2 * margin) / sheetW, (h - 2 * margin) / sheetH);
-  const ox = (w - sheetW * scale) / 2;
-  const oy = (h - sheetH * scale) / 2;
+let detailScene = null;
+let detailRenderer = null;
+let detailCamera = null;
+let detailControls = null;
+let detailMeshGroup = null;
+let detailAnimId = null;
+let currentTaskKey = null;
 
-  function tx(v) { return ox + v[0] * scale; }
-  function ty(v) { return oy + (sheetH - v[1]) * scale; }
+function showDetail(key) {
+  currentTaskKey = key;
+  const task = TASKS[key];
+
+  document.getElementById('grid-view').classList.add('hidden');
+  document.getElementById('detail-view').classList.add('active');
+
+  document.getElementById('detail-title').textContent = task.name;
+  document.getElementById('detail-subtitle').textContent = task.description;
+
+  // 2D crease pattern
+  draw2DCrease(task);
+
+  // Metrics
+  const foldCount = task.fold.edges_assignment.filter(a => a === 'M' || a === 'V').length;
+  document.getElementById('m-sim').textContent = Math.round(task.similarity * 100) + '%';
+  document.getElementById('m-folds').textContent = foldCount;
+  document.getElementById('m-strain').textContent = task.strain.toFixed(4);
+  document.getElementById('m-verts').textContent = task.fold.vertices_coords.length;
+  document.getElementById('m-status').textContent = task.strain < 0.05 ? 'stable' : 'settling';
+
+  const simEl = document.getElementById('m-sim');
+  simEl.className = 'metric-value ' + (task.similarity > 0.9 ? 'high' : task.similarity > 0.5 ? 'mid' : 'low');
+
+  // 3D viewer
+  const panel = document.getElementById('panel-3d');
+  // Clean up old
+  if (detailRenderer) {
+    panel.removeChild(detailRenderer.domElement);
+    detailRenderer.dispose();
+    if (detailAnimId) cancelAnimationFrame(detailAnimId);
+  }
+
+  const setup = setupScene(panel, { orbit: true, bg: 0xf5f3f0 });
+  detailScene = setup.scene;
+  detailCamera = setup.camera;
+  detailRenderer = setup.renderer;
+  detailControls = setup.controls;
+
+  // Reset slider
+  const slider = document.getElementById('crease-slider');
+  slider.value = 100;
+  document.getElementById('slider-val').textContent = '100%';
+
+  // Build mesh
+  updateDetailMesh(1.0);
+
+  // Target ghost overlay
+  addTargetGhost(task);
+
+  // Animate
+  const animateDetail = () => {
+    detailAnimId = requestAnimationFrame(animateDetail);
+    detailControls.update();
+    detailRenderer.render(detailScene, detailCamera);
+  };
+  animateDetail();
+
+  // Resize
+  const resizeObserver = new ResizeObserver(() => {
+    const w = panel.clientWidth;
+    const h = panel.clientHeight;
+    detailCamera.aspect = w / h;
+    detailCamera.updateProjectionMatrix();
+    detailRenderer.setSize(w, h);
+  });
+  resizeObserver.observe(panel);
+}
+
+function updateDetailMesh(cp) {
+  if (!currentTaskKey) return;
+  const task = TASKS[currentTaskKey];
+
+  // Remove old mesh group (keep ghost)
+  if (detailMeshGroup) {
+    detailScene.remove(detailMeshGroup);
+  }
+
+  detailMeshGroup = buildMesh(task, cp);
+  detailScene.add(detailMeshGroup);
+}
+
+function addTargetGhost(task) {
+  const fold = task.fold;
+  const folded = task.folded;
+  const n = folded.length;
+
+  // Wireframe ghost of fully folded state
+  const positions = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    positions[i*3] = folded[i][0];
+    positions[i*3+1] = folded[i][1];
+    positions[i*3+2] = folded[i][2];
+  }
+
+  const faces = fold.faces_vertices;
+  const indices = [];
+  for (const face of faces) {
+    for (let i = 1; i < face.length - 1; i++) {
+      indices.push(face[0], face[i], face[i+1]);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+
+  const ghostMat = new THREE.MeshBasicMaterial({
+    color: 0xc0392b,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.15,
+  });
+
+  const ghost = new THREE.Mesh(geo, ghostMat);
+
+  // Center same as main mesh
+  const box = new THREE.Box3().setFromBufferAttribute(geo.getAttribute('position'));
+  const center = box.getCenter(new THREE.Vector3());
+  ghost.position.sub(center);
+
+  detailScene.add(ghost);
+}
+
+function draw2DCrease(task) {
+  const container = document.getElementById('crease-2d');
+  const fold = task.fold;
+  const verts = fold.vertices_coords;
+
+  // Find bounds
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const v of verts) {
+    minX = Math.min(minX, v[0]); minY = Math.min(minY, v[1]);
+    maxX = Math.max(maxX, v[0]); maxY = Math.max(maxY, v[1]);
+  }
+
+  const pad = 0.15;
+  const vw = maxX - minX + pad * 2;
+  const vh = maxY - minY + pad * 2;
+  const size = 280;
+  const scale = size / Math.max(vw, vh);
+
+  const toX = (x) => (x - minX + pad) * scale;
+  const toY = (y) => size - (y - minY + pad) * scale; // flip Y
+
+  const STROKE = { M: '#c0392b', V: '#2471a3', B: '#1a1816', F: '#ddd8d0', U: '#a9a49d' };
+
+  let svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Background paper
+  const paperPts = [];
+  // Find boundary edges and form polygon
+  const bVerts = new Set();
+  for (let i = 0; i < fold.edges_vertices.length; i++) {
+    if (fold.edges_assignment[i] === 'B') {
+      bVerts.add(fold.edges_vertices[i][0]);
+      bVerts.add(fold.edges_vertices[i][1]);
+    }
+  }
+
+  // Draw faces as background
+  for (const face of fold.faces_vertices) {
+    const pts = face.map(vi => `${toX(verts[vi][0])},${toY(verts[vi][1])}`).join(' ');
+    svg += `<polygon points="${pts}" fill="#ffffff" stroke="none"/>`;
+  }
 
   // Draw edges
-  const edges = ps.edges_vertices || [];
-  const assignments = ps.edges_assignment || [];
-  const order = ['F', 'U', 'V', 'M', 'B'];
-  for (const asgn of order) {
-    for (let i = 0; i < edges.length; i++) {
-      if ((assignments[i] || 'U') !== asgn) continue;
-      const [v1, v2] = edges[i];
-      const p1 = coords2d[v1];
-      const p2 = coords2d[v2];
-      if (!p1 || !p2) continue;
-      ctx.beginPath();
-      ctx.moveTo(tx(p1), ty(p1));
-      ctx.lineTo(tx(p2), ty(p2));
-      ctx.strokeStyle = EDGE_COLORS[asgn] || EDGE_COLORS.U;
-      ctx.lineWidth = EDGE_WIDTHS[asgn] || 1;
-      if (asgn === 'M') ctx.setLineDash([8, 3, 2, 3]);
-      else if (asgn === 'V') ctx.setLineDash([6, 3]);
-      else ctx.setLineDash([]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+  for (let i = 0; i < fold.edges_vertices.length; i++) {
+    const [v1, v2] = fold.edges_vertices[i];
+    const a = fold.edges_assignment[i];
+    const color = STROKE[a] || '#aaa';
+    const width = a === 'B' ? 2 : 1.5;
+    const dash = a === 'M' ? 'stroke-dasharray="6 3"' : a === 'V' ? 'stroke-dasharray="2 2"' : '';
+
+    svg += `<line x1="${toX(verts[v1][0])}" y1="${toY(verts[v1][1])}" x2="${toX(verts[v2][0])}" y2="${toY(verts[v2][1])}" stroke="${color}" stroke-width="${width}" stroke-linecap="round" ${dash}/>`;
   }
 
   // Draw vertices
-  ctx.fillStyle = '#9ca3af';
-  for (const v of coords2d) {
-    if (!v) continue;
-    ctx.beginPath();
-    ctx.arc(tx(v), ty(v), 1.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Legend
-  ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
-  let ly = 20;
-  for (const [label, color, dash] of [['Mountain', '#dc2626', [8,3,2,3]], ['Valley', '#3b82f6', [6,3]], ['Boundary', '#374151', []]]) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.setLineDash(dash);
-    ctx.beginPath();
-    ctx.moveTo(w - 110, ly - 4);
-    ctx.lineTo(w - 88, ly - 4);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#6b7280';
-    ctx.fillText(label, w - 82, ly);
-    ly += 18;
-  }
-}
-
-// ── 3D Mesh Update ─────────────────────────────────────────
-function updateMesh(ps) {
-  if (!ps || !ps.vertices_coords) return;
-
-  // Clear old mesh
-  while (meshGroup.children.length) {
-    const c = meshGroup.children[0];
-    if (c.geometry) c.geometry.dispose();
-    if (c.material) c.material.dispose();
-    meshGroup.remove(c);
-  }
-
-  const verts = ps.vertices_coords;
-  const faces = ps.faces_vertices || [];
-  const strain = ps.strain_per_vertex || new Array(verts.length).fill(0);
-  const edges = ps.edges_vertices || [];
-  const assignments = ps.edges_assignment || [];
-
-  // Use triangulated_faces from server if available, otherwise fan-triangulate
-  let indices;
-  if (ps.triangulated_faces && ps.triangulated_faces.length > 0) {
-    indices = ps.triangulated_faces.flat();
-  } else {
-    indices = [];
-    for (const face of faces) {
-      for (let i = 1; i < face.length - 1; i++) {
-        indices.push(face[0], face[i], face[i + 1]);
-      }
-    }
-  }
-
-  // Positions
-  const positions = new Float32Array(verts.length * 3);
   for (let i = 0; i < verts.length; i++) {
-    positions[i * 3] = verts[i][0];
-    positions[i * 3 + 1] = verts[i][2] || 0;
-    positions[i * 3 + 2] = -(verts[i][1] || 0);
+    svg += `<circle cx="${toX(verts[i][0])}" cy="${toY(verts[i][1])}" r="3" fill="var(--text)" opacity="0.3"/>`;
   }
 
-  // Strain -> vertex colors (light blue=0 -> red=max)
-  const maxStrain = Math.max(...strain, 0.0001);
-  const colors = new Float32Array(verts.length * 3);
-  for (let i = 0; i < verts.length; i++) {
-    const t = Math.min(strain[i] / maxStrain, 1.0);
-    colors[i * 3]     = 0.85 + 0.15 * t;   // R
-    colors[i * 3 + 1] = 0.88 - 0.52 * t;   // G
-    colors[i * 3 + 2] = 0.95 - 0.82 * t;   // B
-  }
-
-  // Build geometry
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  if (indices.length > 0) {
-    geometry.setIndex(indices);
-  }
-  geometry.computeVertexNormals();
-
-  const material = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    side: THREE.DoubleSide,
-    roughness: 0.65,
-    metalness: 0.05,
-    flatShading: false,
-  });
-
-  const mesh = new THREE.Mesh(geometry, material);
-  meshGroup.add(mesh);
-
-  // Draw crease edges
-  const edgeColors = { M: 0xdc2626, V: 0x3b82f6, B: 0x6b7280 };
-  for (let i = 0; i < edges.length; i++) {
-    const asgn = assignments[i];
-    if (!(asgn in edgeColors)) continue;
-    const [v1, v2] = edges[i];
-    const pts = [
-      new THREE.Vector3(verts[v1][0], verts[v1][2] || 0, -(verts[v1][1] || 0)),
-      new THREE.Vector3(verts[v2][0], verts[v2][2] || 0, -(verts[v2][1] || 0)),
-    ];
-    const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
-    const lineMat = new THREE.LineBasicMaterial({
-      color: edgeColors[asgn],
-      linewidth: asgn === 'B' ? 2 : 1,
-    });
-    meshGroup.add(new THREE.Line(lineGeo, lineMat));
-  }
+  svg += '</svg>';
+  container.innerHTML = svg;
 }
 
-// ── Metrics Dashboard ──────────────────────────────────────
-function updateMetrics(obs) {
-  const bar = document.getElementById('metrics-bar');
-  const m = obs.metrics || {};
-  const items = [
-    { label: 'Compactness', value: (m.compactness || 0).toFixed(3), cls: m.compactness > 0.5 ? 'good' : '' },
-    { label: 'Max Strain', value: (m.max_strain || 0).toFixed(5), cls: m.strain_exceeded ? 'bad' : '' },
-    { label: 'Fold Count', value: m.fold_count || 0, cls: '' },
-    { label: 'Valid', value: m.is_valid ? 'YES' : 'NO', cls: m.is_valid ? 'good' : 'bad' },
-    { label: 'Kawasaki', value: m.kawasaki_violations || 0, cls: m.kawasaki_violations > 0 ? 'warn' : 'good' },
-    { label: 'Maekawa', value: m.maekawa_violations || 0, cls: m.maekawa_violations > 0 ? 'warn' : 'good' },
-    { label: 'Self-Int', value: m.self_intersections || 0, cls: m.self_intersections > 0 ? 'bad' : 'good' },
-    { label: 'Energy', value: (m.total_energy || 0).toFixed(4), cls: '' },
-  ];
-
-  if (obs.done && obs.reward !== null && obs.reward !== undefined) {
-    items.push({ label: 'Reward', value: obs.reward.toFixed(2), cls: obs.reward > 0 ? 'good' : 'bad' });
-  }
-
-  bar.innerHTML = items.map(i =>
-    `<div class="metric-card"><div class="label">${i.label}</div><div class="value ${i.cls}">${i.value}</div></div>`
-  ).join('');
+function showGrid() {
+  document.getElementById('grid-view').classList.remove('hidden');
+  document.getElementById('detail-view').classList.remove('active');
+  if (detailAnimId) cancelAnimationFrame(detailAnimId);
+  currentTaskKey = null;
 }
 
-// ── WebSocket ──────────────────────────────────────────────
-function connect() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${proto}//${location.host}/ws`;
-  ws = new WebSocket(wsUrl);
+// ─── SLIDER ───────────────────────────────────────────────────
 
-  ws.onopen = () => {
-    document.getElementById('status-label').textContent = 'Connected';
-    document.getElementById('status-dot').classList.add('connected');
-  };
-
-  ws.onclose = () => {
-    document.getElementById('status-label').textContent = 'Disconnected';
-    document.getElementById('status-dot').classList.remove('connected');
-    setTimeout(connect, 2000);
-  };
-
-  ws.onerror = () => {
-    document.getElementById('status-label').textContent = 'Error';
-    document.getElementById('status-dot').classList.remove('connected');
-  };
-
-  ws.onmessage = (evt) => {
-    try {
-      const msg = JSON.parse(evt.data);
-      if (msg.type === 'observation' || msg.data) {
-        const data = msg.data || msg;
-        const obs = {
-          done: data.done,
-          reward: data.reward,
-          ...(data.observation || {}),
-        };
-        currentObs = obs;
-        handleObservation(obs);
-      } else if (msg.type === 'state') {
-        // State response — not used for rendering
-      } else if (msg.type === 'error') {
-        showError(msg.message || msg.error || 'Unknown error');
-      }
-    } catch (e) {
-      console.error('WS parse error:', e);
-    }
-  };
-}
-
-function handleObservation(obs) {
-  hideError();
-  if (obs.error) showError(obs.error);
-
-  drawCreasePattern(obs.paper_state);
-  updateMesh(obs.paper_state);
-  updateMetrics(obs);
-
-  if (obs.done) {
-    const bar = document.getElementById('error-bar');
-    bar.textContent = `Episode ended. Reward: ${obs.reward !== null ? obs.reward.toFixed(2) : 'N/A'}`;
-    bar.style.display = 'block';
-    bar.className = obs.reward > 0 ? 'success' : '';
-    bar.id = 'error-bar';
-  }
-}
-
-function showError(msg) {
-  const bar = document.getElementById('error-bar');
-  bar.textContent = msg;
-  bar.style.display = 'block';
-  bar.className = '';
-}
-
-function hideError() {
-  const bar = document.getElementById('error-bar');
-  bar.style.display = 'none';
-  bar.className = '';
-}
-
-// ── Controls ───────────────────────────────────────────────
-
-// Reset
-document.getElementById('btn-reset').addEventListener('click', () => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  const taskName = document.getElementById('task-select').value;
-  ws.send(JSON.stringify({ type: 'reset', task_name: taskName }));
+document.getElementById('crease-slider').addEventListener('input', (e) => {
+  const val = parseInt(e.target.value);
+  document.getElementById('slider-val').textContent = val + '%';
+  updateDetailMesh(val / 100);
 });
 
-// Fold step
-document.getElementById('btn-step').addEventListener('click', () => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({
-    type: 'step',
-    action: {
-      fold_type: document.getElementById('fold-type').value,
-      fold_line: {
-        start: [parseFloat(document.getElementById('lx1').value), parseFloat(document.getElementById('ly1').value)],
-        end: [parseFloat(document.getElementById('lx2').value), parseFloat(document.getElementById('ly2').value)],
-      },
-      fold_angle: parseFloat(document.getElementById('fold-angle').value),
-      layer_select: 'all',
-    },
-  }));
+// ─── KEYBOARD ─────────────────────────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && currentTaskKey) showGrid();
 });
 
-// Stop
-document.getElementById('btn-stop').addEventListener('click', () => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({
-    type: 'step',
-    action: {
-      fold_type: 'stop',
-      fold_line: { start: [0, 0], end: [0, 0] },
-      fold_angle: 0,
-      layer_select: 'all',
-    },
-  }));
-});
+// ─── WEBSOCKET (optional live connection) ─────────────────────
 
-// Fold % slider
-const foldPctSlider = document.getElementById('fold-pct');
-const foldPctVal = document.getElementById('fold-pct-val');
-foldPctSlider.addEventListener('input', () => {
-  foldPctVal.textContent = foldPctSlider.value + '%';
-});
-
-// Load SVG file
-document.getElementById('btn-load-svg').addEventListener('click', () => {
-  document.getElementById('file-svg').click();
-});
-
-document.getElementById('file-svg').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const content = await file.text();
+function connectWS() {
   try {
-    const resp = await fetch('/load_pattern', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ format: 'svg', content }),
-    });
-    const data = await resp.json();
-    if (data.observation) {
-      currentObs = data.observation;
-      handleObservation(data.observation);
-    } else if (data.error) {
-      showError(data.error);
-    }
-  } catch (err) {
-    showError('Failed to load SVG: ' + err.message);
-  }
-  e.target.value = '';
-});
-
-// Load FOLD file
-document.getElementById('btn-load-fold').addEventListener('click', () => {
-  document.getElementById('file-fold').click();
-});
-
-document.getElementById('file-fold').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const content = await file.text();
-  try {
-    const resp = await fetch('/load_pattern', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ format: 'fold', content }),
-    });
-    const data = await resp.json();
-    if (data.observation) {
-      currentObs = data.observation;
-      handleObservation(data.observation);
-    } else if (data.error) {
-      showError(data.error);
-    }
-  } catch (err) {
-    showError('Failed to load FOLD: ' + err.message);
-  }
-  e.target.value = '';
-});
-
-// Examples dropdown
-const exBtn = document.getElementById('btn-examples');
-const exDropdown = document.getElementById('examples-dropdown');
-let examplesFetched = false;
-
-exBtn.addEventListener('click', async () => {
-  const isOpen = exDropdown.classList.contains('open');
-  if (isOpen) {
-    exDropdown.classList.remove('open');
-    return;
-  }
-
-  if (!examplesFetched) {
-    exDropdown.innerHTML = '<div class="empty-msg">Loading...</div>';
-    exDropdown.classList.add('open');
-    try {
-      const resp = await fetch('/examples');
-      const data = await resp.json();
-      const items = data.examples || data || [];
-      if (items.length === 0) {
-        exDropdown.innerHTML = '<div class="empty-msg">No examples found</div>';
-      } else {
-        exDropdown.innerHTML = items.map(name =>
-          `<button class="example-item" data-name="${name}">${name}</button>`
-        ).join('');
-        exDropdown.querySelectorAll('.example-item').forEach(btn => {
-          btn.addEventListener('click', async (ev) => {
-            ev.stopPropagation();
-            exDropdown.classList.remove('open');
-            try {
-              const resp = await fetch('/load_pattern', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ example: btn.dataset.name }),
-              });
-              const d = await resp.json();
-              if (d.observation) {
-                currentObs = d.observation;
-                handleObservation(d.observation);
-              } else if (d.error) {
-                showError(d.error);
-              }
-            } catch (err) {
-              showError('Failed to load example: ' + err.message);
-            }
-          });
-        });
+    const ws = new WebSocket('ws://localhost:9000/ws');
+    ws.onopen = () => console.log('[WS] Connected');
+    ws.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === 'observation' && data.data?.observation) {
+        const obs = data.data.observation;
+        console.log('[WS] Observation:', obs.shape_similarity);
       }
-      examplesFetched = true;
-    } catch (err) {
-      exDropdown.innerHTML = '<div class="empty-msg">Could not fetch examples</div>';
-    }
-  } else {
-    exDropdown.classList.add('open');
+    };
+    ws.onerror = () => console.log('[WS] No server (using demo data)');
+  } catch (e) {
+    // Server not running, use demo data
   }
-});
+}
 
-// Close dropdown on click outside
-document.addEventListener('click', (e) => {
-  if (!exBtn.contains(e.target) && !exDropdown.contains(e.target)) {
-    exDropdown.classList.remove('open');
-  }
-});
-
-// ── Init ───────────────────────────────────────────────────
-connect();
+connectWS();
 </script>
+
 </body>
 </html>

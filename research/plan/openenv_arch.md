@@ -1,1318 +1,742 @@
-# OpenEnv Environment Architecture — Origami RL
+# Origami RL — Architecture Plan
 
-> Updated plan reflecting actual OpenEnv patterns (from 2048 reference),
-> proper rendering strategy (Three.js viewer, not matplotlib),
-> and clear separation between training vs demo contexts.
-
----
-
-## 1. Overview
-
-Two distinct contexts use the SAME server code:
-
-```
-CONTEXT 1: RL TRAINING (Colab/GPU machine)
-┌──────────────────────────────────────────────────────────┐
-│  Colab Notebook                                          │
-│                                                          │
-│  ┌──────────────────┐    ┌────────────────────────────┐  │
-│  │  GRPOTrainer     │    │  OpenEnv Server (subprocess)│  │
-│  │                  │    │  port 9000                  │  │
-│  │  LLM generates   │    │                            │  │
-│  │  fold_strategy()  │───▶│  reset() → step() → state │  │
-│  │                  │◀───│  returns: paper_state +    │  │
-│  │  Reward functions │    │    metrics + reward        │  │
-│  │  score the result │    │                            │  │
-│  └──────────────────┘    │  NO RENDERING              │  │
-│                          │  Just geometry + numbers     │  │
-│                          └────────────────────────────┘  │
-└──────────────────────────────────────────────────────────┘
-
-CONTEXT 2: DEMO / HACKATHON (HF Space + Browser)
-┌──────────────────────────────────────────────────────────┐
-│  HF Space (Docker)                                       │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  FastAPI via create_app()                           │  │
-│  │                                                    │  │
-│  │  /ws                  → OpenEnv WebSocket protocol  │  │
-│  │  /reset, /step, /state → OpenEnv HTTP (stateless)   │  │
-│  │  /health, /schema      → OpenEnv metadata           │  │
-│  │  /web                  → OpenEnv built-in generic UI │  │
-│  │  /viewer               → Three.js origami viewer    │  │
-│  └──────────────────┬─────────────────────────────────┘  │
-│                     │                                     │
-│  ┌──────────────────▼─────────────────────────────────┐  │
-│  │  OrigamiEnvironment                                 │  │
-│  │  reset() / step() / state                           │  │
-│  │                                                     │  │
-│  │  ┌──────────┐  ┌──────────────────┐                │  │
-│  │  │  Engine   │  │  Task System     │                │  │
-│  │  │          │  │                  │                │  │
-│  │  │ paper    │  │ task pool       │                │  │
-│  │  │ fold     │  │ materials       │                │  │
-│  │  │ physics  │  │ curriculum      │                │  │
-│  │  │ validate │  │                  │                │  │
-│  │  │ metrics  │  │                  │                │  │
-│  │  └──────────┘  └──────────────────┘                │  │
-│  └────────────────────────────────────────────────────┘  │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  Three.js Viewer (static HTML/JS, served by same   │  │
-│  │  FastAPI at /viewer)                                │  │
-│  │                                                    │  │
-│  │  Connects to /ws → receives paper_state            │  │
-│  │  Renders: 2D crease (Canvas) + 3D mesh (WebGL)    │  │
-│  │  + strain heatmap (vertex colors) + animation      │  │
-│  └────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────┘
-
-Browser opens /viewer → sees origami fold live in 3D
-```
-
-### Key Design Decisions
-
-1. **No server-side image rendering.** No matplotlib, no Pillow, no imageio.
-   The server returns FOLD JSON data (vertices, edges, faces, strain) in every
-   observation. Rendering happens in the browser via Three.js (demo) or not at
-   all (training).
-
-2. **`render_urls` removed from Observation.** The old design saved PNGs to disk
-   and returned file paths — nobody fetched them during training (wasted CPU/disk).
-   Instead, `paper_state` IS the render data. The Three.js viewer reads it directly.
-
-3. **Same server code for both contexts.** The only difference is who consumes it:
-   - Training: Python reward functions read `paper_state.metrics` → compute reward
-   - Demo: Three.js reads `paper_state.vertices_coords` → renders 3D mesh
-
-4. **`openenv push`** deploys to HF Spaces. Sets `ENABLE_WEB_INTERFACE=true`
-   which gives us the built-in generic UI at `/web`. Our custom Three.js viewer
-   is served as static files at `/viewer`.
+> **Paradigm:** LLM generates FOLD crease patterns → physics simulates folding →
+> reward = shape similarity to target. Like AlphaFold but for origami.
+>
+> Viewer harvested from OrigamiSimulator. Minimalistic grid UI.
 
 ---
 
-## 2. Repository Structure
+## 1. Core Concept
 
-```
-origami_env/                             # THE deliverable — one package
-│
-├── server/                              # Python backend (OpenEnv server)
-│   │
-│   ├── engine/                          # Origami simulation core
-│   │   ├── __init__.py
-│   │   ├── paper.py                     # PaperState dataclass, FOLD I/O, create_flat_sheet()
-│   │   ├── fold.py                      # apply_fold() — quaternion rotation, face splitting
-│   │   ├── physics.py                   # Bar-and-hinge Verlet solver, strain computation
-│   │   ├── validation.py               # Kawasaki, Maekawa, self-intersection detection
-│   │   ├── metrics.py                   # ALL metrics — compactness, strain, shape, deployability
-│   │   └── materials.py                 # Material presets + stiffness parameter derivation
-│   │
-│   ├── renderer/                        # Minimal — FOLD JSON export only (no images)
-│   │   ├── __init__.py
-│   │   └── exporter.py                 # FOLD JSON export, OBJ export
-│   │
-│   ├── models.py                        # OpenEnv types: OrigamiAction, OrigamiObservation, OrigamiState
-│   ├── origami_environment.py           # Environment class (subclasses openenv Environment)
-│   ├── tasks.py                         # Task pool, curriculum levels, difficulty sampling
-│   ├── app.py                           # create_app() + /ws/training + mount viewers
-│   ├── training_broadcast.py            # TrainingBroadcastServer for live grid spectating
-│   ├── __init__.py
-│   ├── requirements.txt                 # openenv-core, numpy, scipy, pydantic (NO matplotlib)
-│   └── Dockerfile
-│
-├── viewer/                              # Three.js viewers (static files, no build step)
-│   ├── index.html                       # Demo viewer: 2D + 3D + metrics + controls
-│   └── training.html                    # Training grid viewer: G episodes live + fullscreen
-│
-├── client/                              # OpenEnv client (for RL training)
-│   ├── __init__.py
-│   ├── client.py                        # OrigamiEnvClient (EnvClient subclass, WebSocket)
-│   └── reward_functions.py              # code_valid, no_cheating, fold_quality (GRPO rewards)
-│
-├── training/                            # GRPO training (runs on Colab)
-│   ├── train_grpo.py                    # GRPOTrainer + --demo mode for grid testing
-│   └── runner.py                        # Parallel episode executor with broadcast hooks
-│
-├── openenv.yaml                         # Manifest for openenv push
-├── pyproject.toml
-└── README.md
-```
+### The AlphaFold Analogy
 
-### What Changed from Previous Plan
+| AlphaFold | Our System |
+|---|---|
+| Input: amino acid sequence | Input: "fold into a triangle" (task prompt) |
+| Predict: 3D protein structure | Predict: crease pattern (FOLD format) |
+| Simulate: molecular dynamics | Simulate: bar-and-hinge physics (creasePercent 0→1) |
+| Validate: compare to known structure | Validate: overlay folded shape vs target shape |
+| Reward: structural similarity (RMSD) | Reward: shape similarity (chamfer distance) |
 
-| Before | After | Why |
-|--------|-------|-----|
-| `renderer/render_2d.py` (matplotlib) | REMOVED | Browser renders via Three.js |
-| `renderer/render_3d.py` (matplotlib) | REMOVED | Browser renders via Three.js |
-| `renderer/screenshots.py` (PNG capture) | REMOVED | No server-side images |
-| `renderer/recorder.py` (GIF via imageio) | REMOVED | Browser can record (MediaRecorder) |
-| `web/` (React + R3F) | `viewer/` (plain HTML + Three.js) | Simpler, no build step, same quality |
-| `render_urls` in Observation | REMOVED | paper_state IS the render data |
-| matplotlib, Pillow, imageio deps | REMOVED | Lighter Docker image |
+### What the LLM Actually Generates
 
----
-
-## 3. Pydantic Models (`server/models.py`)
-
-### OrigamiAction
-
-```python
-class OrigamiAction(Action):
-    """One fold operation. Sent by the client each step."""
-    # metadata: Dict[str, Any]  (inherited from Action)
-
-    fold_type: str = "valley"             # "valley" | "mountain" | "pleat" | "crimp" | "stop"
-    fold_line: Dict[str, List[float]]     # {"start": [x,y], "end": [x,y]} (normalized 0-1)
-    fold_angle: float = 180.0             # degrees, 0-180
-    layer_select: str = "all"             # "all" | "top" | "bottom"
-```
-
-### OrigamiObservation
-
-```python
-class OrigamiObservation(Observation):
-    """Everything the LLM and Three.js viewer need."""
-    # done: bool           (inherited from Observation)
-    # reward: float|None   (inherited from Observation)
-    # metadata: Dict       (inherited from Observation)
-
-    task: Dict[str, Any]                  # Task definition
-    paper_state: Dict[str, Any]           # FOLD-compatible geometry + physics
-    # {
-    #   "vertices_coords": [[x,y,z], ...],
-    #   "edges_vertices": [[v1,v2], ...],
-    #   "faces_vertices": [[v0,v1,v2,...], ...],
-    #   "edges_assignment": ["M","V","B","F",...],
-    #   "edges_foldAngle": [180, -180, 0, ...],
-    #   "num_vertices": 36, "num_edges": 85, "num_faces": 50,
-    #   "bounding_box": [0.5, 1.0, 0.02],
-    #   "num_layers": 2,
-    #   "width": 1.0, "height": 1.0,
-    #   "material": {"name": "paper", ...},
-    #   "strain_per_vertex": [0.001, 0.005, ...],
-    #   "energy": {"total": 0.12, "bar": 0.05, "facet": 0.03, "fold": 0.04},
-    #   "fold_count": 2,
-    # }
-    metrics: Dict[str, Any]               # All computed metrics
-    fold_history: List[Dict[str, Any]]    # History of folds applied
-    error: Optional[str] = None           # Error message if fold failed
-```
-
-**Note:** No `render_urls`. The `paper_state` dict contains all geometry data
-needed for Three.js to render. During training, reward functions read `metrics`.
-During demo, the viewer reads `paper_state.vertices_coords` etc.
-
-### OrigamiState
-
-```python
-class OrigamiState(State):
-    # episode_id: Optional[str]  (inherited from State)
-    # step_count: int            (inherited from State)
-
-    task_name: str = ""
-    num_folds_applied: int = 0
-    is_valid: bool = True
-    total_reward: float = 0.0
-```
-
-### Wire Format (what goes over WebSocket)
-
-OpenEnv's `serialize_observation()` extracts `done`, `reward`, `metadata` to top level:
+**NOT** step-by-step fold actions. **A FOLD crease pattern.**
 
 ```json
 {
-  "observation": {
-    "task": {"name": "half_fold", "width": 1.0, ...},
-    "paper_state": {
-      "vertices_coords": [[0,0,0], [1,0,0], ...],
-      "edges_vertices": [[0,1], [1,2], ...],
-      "edges_assignment": ["B", "B", "V", ...],
-      "strain_per_vertex": [0.001, 0.005, ...],
-      ...
-    },
-    "metrics": {"compactness": 0.45, "is_valid": true, ...},
-    "fold_history": [{"type": "valley", "step": 1, ...}],
-    "error": null
-  },
-  "reward": null,
-  "done": false
+  "vertices_coords": [[0,0], [1,0], [1,1], [0,1], [0.5,0.5]],
+  "edges_vertices": [[0,1], [1,2], [2,3], [3,0], [0,2]],
+  "edges_assignment": ["B", "B", "B", "B", "V"],
+  "edges_foldAngle": [0, 0, 0, 0, 180]
 }
 ```
 
-The Three.js viewer reads `observation.paper_state` → builds mesh.
-The reward functions read `observation.metrics` → compute score.
-Same data, different consumers.
+The LLM outputs a complete crease pattern — vertices, edges, assignments
+(mountain/valley/boundary), and target fold angles. The physics engine takes
+this, animates creasePercent from 0→1, and produces a final 3D shape.
+We compare that shape against the target. That's the reward.
 
----
+**Why this is correct:**
+- OrigamiSimulator works exactly this way — fixed topology, animate creasePercent
+- No topology modification headaches (no face splitting, no vertex insertion)
+- FOLD is a well-defined format — LLMs can generate structured JSON
+- Physics is solved (bar-and-hinge is well-understood)
+- Reward is dead simple: does the shape match?
 
-## 4. Engine (`server/engine/`)
-
-*Unchanged from previous plan. All engine code is already implemented and working.*
-
-### 4.1 Paper State (`paper.py`)
-
-FOLD-format compatible dataclass. Key fields: `vertices_coords` (N,3),
-`edges_vertices` (E,2), `faces_vertices` (ragged), `edges_assignment`,
-`edges_foldAngle`, `rest_lengths`, `rest_positions`, `strain_per_vertex`,
-`energy`, `material`, `face_orders`, `num_layers`.
-
-Key methods: `create_flat_sheet()`, `to_fold_json()`, `from_fold_json()`,
-`to_observation_dict()`, `bounding_box`, `triangulated_faces`.
-
-### 4.2 Fold Operations (`fold.py`)
-
-10-step pipeline: validate → split faces → classify vertices → quaternion
-rotation → update assignments → update angles → update topology → compute
-rest lengths → update layers → increment fold_count.
-
-Pleat = valley + mountain. Crimp = mountain + valley.
-
-### 4.3 Physics Solver (`physics.py`)
-
-Bar-and-hinge Verlet integration. Three energy components:
-- E_bar (axial springs, prevents stretching)
-- E_facet (panel bending, keeps faces flat)
-- E_fold (crease rotation, drives folding)
-
-Numerical stability: force clamping, NaN detection, stiffness caps,
-reduced dt=0.005, damping=0.15.
-
-### 4.4 Validation (`validation.py`)
-
-- Kawasaki-Justin: alternating angle sum at interior vertices
-- Maekawa-Justin: |M - V| = 2 at interior vertices
-- Self-intersection: Z-separation + normal alignment check (not simple overlap)
-- Strain limits: per-vertex strain vs material.max_strain
-
-### 4.5 Metrics (`metrics.py`)
-
-20+ metrics: compactness, deployment_ratio, volume_compaction, packing_efficiency,
-fits_target_box, max/mean strain, energy breakdown, fold_count, folding_efficiency,
-crease_complexity, is_deployable, deployment_force_estimate, chamfer/hausdorff distance.
-
-### 4.6 Materials (`materials.py`)
-
-Four presets: paper, mylar, aluminum, nitinol. Each has thickness, Young's modulus,
-max strain, Poisson ratio, density. Derived stiffness properties for physics.
-
----
-
-## 5. Renderer (`server/renderer/`)
-
-### What's LEFT (kept)
-
-```python
-# exporter.py — FOLD JSON + OBJ export (lightweight, no image deps)
-
-def save_fold_json(paper: PaperState, path: str, fold_history: list):
-    """Export FOLD-format JSON with metadata."""
-
-def export_obj(paper: PaperState) -> str:
-    """Wavefront OBJ for external renderers / 3D printing."""
-```
-
-### What's REMOVED
-
-| File | Was | Why Removed |
-|------|-----|-------------|
-| `render_2d.py` | matplotlib crease pattern PNG | Three.js viewer renders 2D in browser |
-| `render_3d.py` | matplotlib 3D wireframe PNG | Three.js viewer renders 3D in browser |
-| `screenshots.py` | Per-step PNG capture to disk | No server-side images needed |
-| `recorder.py` | GIF assembly via imageio | Browser can use MediaRecorder API |
-
-### Dependencies REMOVED from requirements.txt
+### Two Contexts, Same Engine
 
 ```
-matplotlib>=3.7    ← REMOVED
-imageio>=2.31      ← REMOVED
-Pillow>=10.0       ← REMOVED
+CONTEXT 1: RL TRAINING (Colab/GPU)
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│  LLM generates FOLD JSON (crease pattern)               │
+│       ↓                                                 │
+│  Physics engine: simulate(fold_data, creasePercent=1.0) │
+│       ↓                                                 │
+│  Final 3D shape (vertex positions)                      │
+│       ↓                                                 │
+│  Compare to target shape → reward (shape similarity)    │
+│                                                         │
+│  NO RENDERING. Just geometry → numbers → reward.        │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+
+CONTEXT 2: DEMO (Web App + Browser)
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│  Grid homepage: cards showing fold experiments          │
+│       ↓ click                                           │
+│  Detail page: OrigamiSimulator-style viewer             │
+│                                                         │
+│  ┌─────────────┐  ┌──────────────────────────────────┐  │
+│  │ 2D Crease   │  │ 3D Folded Mesh (Three.js)        │  │
+│  │ Pattern     │  │ + target shape overlay (ghost)    │  │
+│  │ (SVG)       │  │ + orbit controls                 │  │
+│  │ M=red V=blue│  │ + strain heatmap                 │  │
+│  └─────────────┘  └──────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │  creasePercent slider: flat ◄━━━━━━━━━━► folded  │   │
+│  └──────────────────────────────────────────────────┘   │
+│  Metrics: shape similarity, fold count, strain          │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 6. Three.js Viewer (`viewer/`)
+## 2. How OrigamiSimulator Works (Reference)
 
-Static HTML + JS served by FastAPI at `/viewer`. No build step. No React.
-Just one HTML file with embedded Three.js from CDN.
+We're harvesting from this. Understanding it is critical.
 
-### Architecture
+### Folding Paradigm: Fixed Topology + creasePercent Animation
 
-```
-Browser opens /viewer
-    │
-    ├── Loads index.html (contains Three.js via CDN)
-    │
-    ├── Connects to /ws (OpenEnv WebSocket)
-    │
-    ├── Sends: {"type": "reset", "task_name": "solar_panel"}
-    │
-    ├── Receives: observation with paper_state
-    │
-    └── Three.js renders:
-        ├── LEFT PANEL: 2D Crease Pattern (Canvas2D)
-        │   - edges colored by assignment (M=red, V=blue, B=black, F=gray)
-        │   - vertices as dots
-        │   - uses rest_positions[:, :2]
-        │
-        ├── RIGHT PANEL: 3D Folded State (WebGL)
-        │   - BufferGeometry from vertices_coords + triangulated faces
-        │   - Vertex colors from strain_per_vertex (blue→red gradient)
-        │   - OrbitControls (rotate, zoom, pan)
-        │   - DoubleSide material
-        │   - Edge overlay (M=red, V=blue, B=black lines)
-        │
-        ├── BOTTOM: Metrics Dashboard
-        │   - Compactness, strain, fold count, validity, energy
-        │
-        └── CONTROLS
-            - Task selector dropdown
-            - Fold input (type, line start/end, angle)
-            - Reset / Step / Stop buttons
-            - Animation slider (fold_percent 0→1)
-```
+1. Load crease pattern (SVG or FOLD) — all vertices, edges, faces defined upfront
+2. All vertices start flat (z=0)
+3. `creasePercent` uniform scales ALL target fold angles: `targetTheta = originalTheta × creasePercent`
+4. GPU bar-and-hinge solver finds equilibrium 3D positions
+5. **Topology NEVER changes** — same vertices, edges, faces throughout
 
-### Data Flow (Same FOLD Data, Browser Renders)
+### Physics (Bar-and-Hinge)
 
-```
-Server: env.step(action)
-    → paper_state = {
-        vertices_coords: [[x,y,z], ...],     ← Three.js positions
-        faces_vertices: [[0,1,2], ...],       ← Three.js index buffer
-        edges_assignment: ["M","V","B",...],   ← Edge colors
-        strain_per_vertex: [0.01, ...],       ← Vertex colors
-        edges_foldAngle: [180, -180, ...],    ← Fold visualization
-      }
-    → sent via WebSocket as JSON
+Four force types:
+- **Beam (axial):** `F = -K(length - L₀)` — prevents stretching
+- **Crease (torsional):** `τ = K(targetTheta × creasePercent - θ_current)` — drives folding
+- **Face stiffness:** triangle angle preservation — prevents mesh collapse
+- **Panel stiffness:** dihedral springs on facet edges — keeps faces flat
 
-Browser: viewer receives paper_state
-    → positions = new Float32Array(vertices_coords.flat())
-    → indices = new Uint16Array(triangulated_faces.flat())
-    → colors = strainToColor(strain_per_vertex)  // blue→red
-    → geometry.setAttribute('position', ...)
-    → geometry.setIndex(...)
-    → geometry.setAttribute('color', ...)
-    → renderer.render(scene, camera)
-```
+Solver: Verlet integration, adaptive timestep `dt = 0.9 / (2π × maxFreq)`,
+per-beam critical damping `D = 0.45 × 2√(K × m_min)`.
 
-### Key Three.js Pattern (from origami simulator reference)
+### FOLD Format (What the LLM Generates)
 
-```javascript
-// Build mesh from FOLD data
-function updateMesh(paperState) {
-    const vertices = paperState.vertices_coords;
-    const faces = paperState.faces_vertices;
-    const strain = paperState.strain_per_vertex;
-
-    // Triangulate faces (server already provides triangulated)
-    const positions = new Float32Array(vertices.flat());
-    const indices = [];
-    for (const face of faces) {
-        // Fan triangulation for polygons > 3 vertices
-        for (let i = 1; i < face.length - 1; i++) {
-            indices.push(face[0], face[i], face[i + 1]);
-        }
-    }
-
-    // Strain → vertex colors (blue=0, red=max)
-    const colors = new Float32Array(vertices.length * 3);
-    const maxStrain = Math.max(...strain, 0.001);
-    for (let i = 0; i < vertices.length; i++) {
-        const t = Math.min(strain[i] / maxStrain, 1.0);
-        colors[i * 3]     = t;           // R
-        colors[i * 3 + 1] = 0.2;         // G
-        colors[i * 3 + 2] = 1.0 - t;     // B
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setIndex(indices);
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geometry.computeVertexNormals();
-}
-
-// Draw crease edges
-function drawCreaseEdges(paperState) {
-    const edgeColors = { M: 0xe74c3c, V: 0x3498db, B: 0x2c3e50 };
-    for (let i = 0; i < paperState.edges_vertices.length; i++) {
-        const [v1, v2] = paperState.edges_vertices[i];
-        const assignment = paperState.edges_assignment[i];
-        if (assignment in edgeColors) {
-            // Draw line from vertices[v1] to vertices[v2]
-        }
-    }
+```json
+{
+  "file_spec": 1.1,
+  "vertices_coords": [[x, y], ...],
+  "edges_vertices": [[v1, v2], ...],
+  "edges_assignment": ["M", "V", "B", "F", ...],
+  "edges_foldAngle": [-180, 180, 0, 0, ...],
+  "faces_vertices": [[v0, v1, v2], ...]
 }
 ```
 
----
+| Assignment | Color | Meaning |
+|---|---|---|
+| B | black #000 | Boundary edge |
+| M | red #f00 | Mountain fold (negative angle) |
+| V | blue #00f | Valley fold (positive angle) |
+| F | yellow #ff0 | Facet/triangulation edge |
+| U | magenta #f0f | Unassigned/hinge |
 
-## 7. Environment (`server/origami_environment.py`)
+### SVG Encoding
 
-```python
-class OrigamiEnvironment(Environment[OrigamiAction, OrigamiObservation, OrigamiState]):
-    SUPPORTS_CONCURRENT_SESSIONS = False
+OrigamiSimulator's SVGs encode crease patterns via stroke color + opacity:
+- `stroke="#ff0000" opacity="0.5"` → Mountain at -90° (0.5 × 180)
+- `stroke="#0000ff" opacity="1.0"` → Valley at +180°
+- `stroke="#000000"` → Boundary
 
-    def __init__(self, renders_dir: str = "renders", **kwargs):
-        super().__init__(**kwargs)
-        self._paper = None
-        self._task = None
-        self._fold_history = []
-        self._metrics = {}
-        self._error = None
-        self._episode_id = None
-        self._step_count = 0
-        self._total_reward = 0.0
+### Coordinate System
 
-    def reset(self, seed=None, episode_id=None, **kwargs) -> OrigamiObservation:
-        self._episode_id = episode_id or str(uuid.uuid4())
-        self._step_count = 0
-        self._fold_history = []
-        self._error = None
-        self._total_reward = 0.0
-
-        # Sample task
-        task_name = kwargs.get("task_name")
-        self._task = get_task_by_name(task_name) or sample_task(seed=seed)
-
-        # Create flat sheet
-        self._paper = create_flat_sheet(
-            self._task["width"], self._task["height"],
-            MATERIALS[self._task["material"]]
-        )
-
-        # Initial validation + metrics
-        self._validation = validate_state(self._paper)
-        self._metrics = compute_all_metrics(self._paper, self._task, self._validation)
-
-        return self._make_observation(done=False, reward=None)
-
-    def step(self, action: OrigamiAction, timeout_s=None, **kwargs) -> OrigamiObservation:
-        self._step_count += 1
-        self._error = None
-
-        if action.fold_type == "stop":
-            return self._finalize_episode()
-
-        # Apply fold → physics → validate → metrics
-        try:
-            self._paper = apply_fold(self._paper, fold_dict)
-            self._fold_history.append({**fold_dict, "step": self._step_count})
-        except FoldError as e:
-            self._error = str(e)
-            return self._make_observation(done=True, reward=-5.0)
-
-        self._paper = simulate(self._paper, fold_percent=1.0)
-        self._validation = validate_state(self._paper)
-        self._metrics = compute_all_metrics(self._paper, self._task, self._validation)
-
-        done = self._step_count >= self._task.get("max_folds", 50)
-        if done:
-            return self._finalize_episode()
-
-        return self._make_observation(done=False, reward=None)
-
-    @property
-    def state(self) -> OrigamiState:
-        return OrigamiState(
-            episode_id=self._episode_id,
-            step_count=self._step_count,
-            task_name=self._task.get("name", "") if self._task else "",
-            num_folds_applied=len(self._fold_history),
-            is_valid=self._metrics.get("is_valid", True),
-            total_reward=self._total_reward,
-        )
-
-    def _make_observation(self, done, reward) -> OrigamiObservation:
-        return OrigamiObservation(
-            done=done,
-            reward=reward,
-            task=self._task or {},
-            paper_state=self._paper.to_observation_dict() if self._paper else {},
-            metrics=self._metrics,
-            fold_history=self._fold_history,
-            error=self._error,
-        )
-```
-
-**Key change:** No `render_urls`, no `capture_step()`, no `capture_episode_summary()`.
-The observation contains `paper_state` (all geometry) and `metrics` (all numbers).
-That's all anyone needs.
+OrigamiSimulator: XZ-plane flat (Y=0, Y is up).
+We need to decide: match theirs or use XY-plane (Z up). Either way, swap on import/export.
 
 ---
 
-## 8. App + Docker (`server/app.py` + `server/Dockerfile`)
+## 3. What We Harvest vs Build
 
-### `app.py`
+### Harvest from OrigamiSimulator
 
-```python
-"""FastAPI entry point — OpenEnv create_app() + static viewer."""
-import os
-from openenv.core.env_server.http_server import create_app
-from .origami_environment import OrigamiEnvironment
-from .models import OrigamiAction, OrigamiObservation
+| Component | Source File | What We Take |
+|---|---|---|
+| 3D mesh rendering | `threeView.js` | Three.js scene setup, lighting, BufferGeometry from FOLD |
+| Crease edge visualization | `model.js` | Color-coded line geometry (M=red, V=blue, B=black) |
+| creasePercent animation | `dynamicSolver.js` | The concept + slider → uniform → physics loop |
+| FOLD file parsing | `pattern.js` | `processFold()` — FOLD JSON → internal representation |
+| Triangulation | `earcut.js` | Polygon → triangle fan for Three.js index buffer |
+| Camera controls | TrackballControls | Orbit, zoom (already Three.js standard) |
 
-app = create_app(
-    env=lambda: OrigamiEnvironment(),
-    action_cls=OrigamiAction,
-    observation_cls=OrigamiObservation,
-    env_name="origami_env",
-    max_concurrent_envs=1,
-)
+### Strip Out (Don't Need)
 
-# Serve Three.js viewer as static files
-from fastapi.staticfiles import StaticFiles
-viewer_dir = os.path.join(os.path.dirname(__file__), "..", "viewer")
-if os.path.isdir(viewer_dir):
-    app.mount("/viewer", StaticFiles(directory=viewer_dir, html=True), name="viewer")
-```
+- jQuery / jQuery UI → modern framework
+- VR support (`VRInterface.js`, `datguivr.js`)
+- Curved folding (`curvedFolding.js` — 2882 lines of complexity)
+- GPU solver (`dynamicSolver.js` + `GPUMath.js`) — we run physics server-side for training; for the viewer we can either port a simplified CPU solver to JS or send pre-computed frames
+- Static/rigid solvers (in development, not used)
+- File import modals and drag-drop UI
+- CCapture video recording
+- SVG import pipeline (we work with FOLD directly)
 
-### `Dockerfile`
+### Build New
 
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Python dependencies (lightweight — no matplotlib/Pillow/imageio)
-COPY server/requirements.txt ./server/
-RUN pip install --no-cache-dir -r server/requirements.txt
-
-# Copy server code
-COPY server/ ./server/
-
-# Copy Three.js viewer (static HTML/JS)
-COPY viewer/ ./viewer/
-
-WORKDIR /app
-
-EXPOSE 8000
-CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-When `openenv push` deploys this, it:
-1. Moves Dockerfile to repo root
-2. Injects `ENV ENABLE_WEB_INTERFACE=true` → enables `/web` (generic OpenEnv UI)
-3. Our `/viewer` is the custom Three.js origami viewer
-
-### `requirements.txt`
-
-```
-openenv-core>=0.2.1
-numpy>=1.24
-scipy>=1.10
-pydantic>=2.0
-fastapi>=0.100
-uvicorn>=0.22
-websockets>=11.0
-```
-
-No matplotlib. No Pillow. No imageio. Docker image drops from ~500MB to ~200MB.
-
-### `openenv.yaml`
-
-```yaml
-spec_version: 1
-name: origami_env
-type: space
-runtime: fastapi
-app: server.app:app
-port: 8000
-```
+| Component | Tech | Purpose |
+|---|---|---|
+| Grid homepage | Next.js or plain HTML | Minimalistic card grid of experiments |
+| Detail page | Next.js or plain HTML | Full simulator view (2D + 3D + slider) |
+| Target shape overlay | Three.js | Ghost wireframe of goal shape in 3D view |
+| Shape similarity display | UI | Visual score: how close to target |
+| Server physics engine | Python (numpy/scipy) | Bar-and-hinge solver for RL reward computation |
+| FOLD generation prompt | Python | LLM prompt engineering for crease pattern output |
+| Reward function | Python | Shape similarity (chamfer distance to target) |
 
 ---
 
-## 9. RL Training (`training/train_grpo.py`)
+## 4. Frontend: Minimalistic Grid → Simulator
 
-Follows the exact 2048 Unsloth pattern. Runs on Colab with GPU.
+### Homepage (Grid)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  ORIGAMI RL                                    [about]   │
+│                                                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
+│  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐  │ │
+│  │  │ 3D │  │  │  │ 3D │  │  │  │ 3D │  │  │  │ 3D │  │ │
+│  │  └────┘  │  │  └────┘  │  │  └────┘  │  │  └────┘  │ │
+│  │ Triangle │  │ Half Fold│  │ Map Fold │  │ Miura-ori│ │
+│  │ 92% ██▓░ │  │ 87% ██▓░ │  │ 45% ██░░ │  │ 12% █░░░ │ │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘ │
+│                                                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐               │
+│  │  ┌────┐  │  │  ┌────┐  │  │  ┌────┐  │               │
+│  │  │ 3D │  │  │  │ 3D │  │  │  │ 3D │  │               │
+│  │  └────┘  │  │  └────┘  │  │  └────┘  │               │
+│  │ Crane    │  │ Stent    │  │ Solar    │               │
+│  │ 0% ░░░░  │  │ 0% ░░░░  │  │ 0% ░░░░  │               │
+│  └──────────┘  └──────────┘  └──────────┘               │
+└──────────────────────────────────────────────────────────┘
+```
+
+Each card:
+- Mini Three.js preview (static or slowly rotating folded state)
+- Task name
+- Shape similarity score (progress bar)
+- Click → navigates to detail page
+
+### Detail Page (Full Simulator)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  ← Back                              Triangle Fold       │
+│                                                          │
+│  ┌────────────────────┐  ┌────────────────────────────┐  │
+│  │                    │  │                            │  │
+│  │   2D Crease        │  │   3D Folded Mesh           │  │
+│  │   Pattern          │  │                            │  │
+│  │                    │  │   [solid mesh]              │  │
+│  │   M ── red         │  │   [ghost target overlay]   │  │
+│  │   V ── blue        │  │                            │  │
+│  │   B ── black       │  │   orbit / zoom / pan       │  │
+│  │                    │  │                            │  │
+│  └────────────────────┘  └────────────────────────────┘  │
+│                                                          │
+│  flat ◄━━━━━━━━━━━━━━━━━●━━━━━━━━━━━━━━━━━━━► folded    │
+│                    creasePercent                          │
+│                                                          │
+│  Shape Match: 92%    Folds: 1    Strain: 0.02            │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+Key elements:
+- 2D crease pattern (left) — SVG or Canvas, color-coded edges
+- 3D mesh (right) — Three.js with target shape ghost overlay
+- creasePercent slider — scrub fold/unfold animation
+- Target overlay — wireframe or transparent mesh showing the goal shape
+- Metrics bar — shape similarity, fold count, max strain
+
+### Design Principles
+
+- **Minimalistic.** White/light background. No clutter. No unnecessary chrome.
+- **No framework bloat.** Next.js for routing (grid → detail), or even plain HTML with dynamic pages.
+- **Harvested renderer.** Three.js rendering logic from OrigamiSimulator, stripped to essentials.
+- **Responsive grid.** CSS Grid `auto-fit, minmax(280px, 1fr)`.
+
+---
+
+## 5. RL Training: How It Works
 
 ### Flow
 
 ```
-1. Launch OpenEnv server as local subprocess (port 9000)
-2. Load LLM model (e.g., gpt-oss-20b with LoRA)
-3. Define prompt: "Write a fold_strategy(paper_state) function..."
-4. Define 3 reward functions:
-   - code_valid: Does the code parse? (+1 / -2)
-   - no_cheating: Only stdlib imports? (+1 / -20)
-   - fold_quality: Does strategy produce good folds? (scored from metrics)
-5. GRPOTrainer trains with these rewards
-6. Each reward eval: reset env → run strategy → check metrics
+1. Define target shape (e.g., triangle — a known FOLD file with final positions)
+
+2. LLM prompt:
+   "Generate a FOLD crease pattern that, when folded, produces a triangle.
+    Output JSON with vertices_coords, edges_vertices, edges_assignment,
+    edges_foldAngle."
+
+3. LLM generates FOLD JSON
+
+4. Physics engine simulates:
+   - Load FOLD data
+   - Run bar-and-hinge solver with creasePercent=1.0
+   - Get final 3D vertex positions
+
+5. Reward = shape_similarity(final_positions, target_positions)
+
+6. GRPO trains on this reward signal
 ```
 
 ### The Prompt
 
-```python
-prompt = """
-Write a Python function that folds origami to maximize compactness.
-You are given a paper_state dict with vertices, edges, and faces.
-Return a fold dict or None to stop:
-
-```python
-def fold_strategy(paper_state):
-    # paper_state has: vertices_coords, edges_vertices, edges_assignment,
-    #   bounding_box, num_layers, material, strain_per_vertex, fold_count
-    return {
-        "type": "valley",  # or "mountain"
-        "line": {"start": [x1, y1], "end": [x2, y2]},
-        "angle": 180,
-    }
-    # Return None when done folding
 ```
-Only output the short function `fold_strategy`.
-""".strip()
+You are an origami designer. Given a target shape description,
+generate a FOLD-format crease pattern that folds into that shape.
+
+Target: {task_description}
+Paper size: {width} x {height}
+
+Output a JSON object with:
+- vertices_coords: [[x, y], ...] — 2D vertex positions on flat paper
+- edges_vertices: [[v1, v2], ...] — edge connectivity
+- edges_assignment: ["B"|"M"|"V", ...] — B=boundary, M=mountain, V=valley
+- edges_foldAngle: [angle, ...] — target fold angles in degrees
+  (M: negative, V: positive, B: 0)
+
+Rules:
+- Boundary edges must form the paper outline
+- All fold lines must connect to vertices
+- Mountain angles are negative (-180 to 0)
+- Valley angles are positive (0 to 180)
+
+Output ONLY the JSON object.
 ```
 
-### Reward Functions
+### Reward Function (Simple)
 
 ```python
-def fold_quality(completions, **kwargs):
+def shape_similarity(completions, target_positions, **kwargs):
     """
-    Execute strategy against live environment, score from metrics.
-    +20.0  if compactness > 0.8 AND valid (optimal folding!)
-    +5.0   if compactness > 0.5
-    +2.0   if function runs but poor result
-    -1.0   timeout
-    -3.0   exception
-     0     broken function
+    AlphaFold-style reward: how close is the folded shape to the target?
+
+    1. Parse LLM output as FOLD JSON
+    2. Run physics simulation (creasePercent=1.0)
+    3. Compare final vertex positions to target
+    4. Score = similarity metric
     """
     scores = []
     for completion in completions:
-        function = extract_function(completion)
-        if function is None:
-            scores.append(0)
+        fold_data = parse_fold_json(completion)
+        if fold_data is None:
+            scores.append(-1.0)  # invalid JSON
             continue
+
         try:
-            strategy = create_locked_down_function(function)
-            # Reset OpenEnv
-            port, process = launch_openenv(port, process)
-            result = process.reset()
-            obs = result.observation
+            final_positions = simulate(fold_data, crease_percent=1.0)
+            score = compute_shape_match(final_positions, target_positions)
+            # score in [0, 1]: 0 = no match, 1 = perfect match
+            scores.append(score * 20.0)  # scale for GRPO
+        except SimulationError:
+            scores.append(-2.0)  # unstable fold pattern
 
-            # Run strategy loop (same as 2048)
-            while not obs.done:
-                fold = execute_with_time_limit(5)(strategy)(obs.paper_state)
-                if fold is None:
-                    action = OrigamiAction(fold_type="stop")
-                else:
-                    action = OrigamiAction(**fold)
-                result = process.step(action)
-                obs = result.observation
-
-            # Score from final metrics
-            m = obs.metrics
-            if m.get("compactness", 0) > 0.8 and m.get("is_valid", False):
-                scores.append(20.0)
-            elif m.get("compactness", 0) > 0.5:
-                scores.append(5.0)
-            else:
-                scores.append(2.0)
-        except TimeoutError:
-            scores.append(-1.0)
-        except Exception:
-            scores.append(-3.0)
     return scores
+
+
+def compute_shape_match(predicted, target):
+    """
+    Chamfer distance between predicted and target vertex clouds.
+    Normalized to [0, 1] where 1 = perfect match.
+    """
+    from scipy.spatial.distance import cdist
+    d = cdist(predicted, target)
+    chamfer = (d.min(axis=1).mean() + d.min(axis=0).mean()) / 2
+    # Normalize: 0 distance = 1.0 score, large distance = 0.0
+    return max(0, 1.0 - chamfer / diagonal_length)
 ```
 
-### Key Difference from 2048
+That's it. One reward function. Shape match. No "code_valid", no "no_cheating",
+no "fold_quality" with 6 different score branches. Just: does the shape match?
 
-2048: LLM generates `strategy(board) → action_id` (one action per call, game loops externally)
-Origami: LLM generates `fold_strategy(paper_state) → fold_dict | None` (one fold per call, loops externally)
+### Starting Simple: Triangle Fold
 
-Same pattern. The reward function resets the env, loops strategy, scores the outcome.
+**Target:** Paper folded in half diagonally → triangle.
 
----
-
-## 10. Client (`client/`)
-
-### `client.py`
-
-```python
-class OrigamiEnvClient(EnvClient[OrigamiAction, OrigamiObservation, OrigamiState]):
-
-    def _step_payload(self, action: OrigamiAction) -> Dict[str, Any]:
-        return action.model_dump()
-
-    def _parse_result(self, payload: Dict[str, Any]) -> StepResult[OrigamiObservation]:
-        return StepResult(
-            observation=OrigamiObservation(**payload.get("observation", {})),
-            reward=payload.get("reward"),
-            done=payload.get("done", False),
-        )
-
-    def _parse_state(self, payload: Dict[str, Any]) -> OrigamiState:
-        return OrigamiState(**payload)
-```
-
-### `reward_functions.py`
-
-Three reward functions for GRPO: `code_valid`, `no_cheating`, `fold_quality`.
-Run on Colab client side, NOT on the server.
-
----
-
-## 11. Task System (`server/tasks.py`)
-
-### Curriculum (4 difficulty levels)
-
-| Level | Task | Material | Target Ratio | Max Folds | Key Challenge |
-|-------|------|----------|-------------|-----------|---------------|
-| 1 | half_fold | paper | 0.50 | 3 | Learn the format |
-| 1 | quarter_fold | paper | 0.25 | 5 | Two perpendicular folds |
-| 2 | letter_fold | paper | 0.33 | 5 | Tri-fold, parallel lines |
-| 2 | map_fold | paper | 0.125 | 8 | Grid fold, must deploy |
-| 3 | solar_panel | mylar | 0.05 | 20 | Miura-ori discovery, deployability |
-| 3 | shelter_wall | aluminum | 0.10 | 15 | Rigid material, strain limits |
-| 4 | stent | nitinol | 0.09 | 25 | Cylindrical target shape, superelastic |
-
----
-
-## 12. API Reference
-
-### Endpoints (auto-generated by create_app())
-
-| Endpoint | Method | Source | Purpose |
-|----------|--------|--------|---------|
-| `/health` | GET | OpenEnv | `{"status": "healthy"}` |
-| `/ws` | WebSocket | OpenEnv | Persistent session (reset/step/state) |
-| `/reset` | POST | OpenEnv | Stateless reset (creates new env per call) |
-| `/step` | POST | OpenEnv | Stateless step (creates new env per call) |
-| `/state` | GET | OpenEnv | Get current state |
-| `/schema` | GET | OpenEnv | Action + Observation JSON schemas |
-| `/metadata` | GET | OpenEnv | Environment name, description, version |
-| `/web` | GET | OpenEnv | Built-in generic web UI (when ENABLE_WEB_INTERFACE=true) |
-| `/viewer` | GET | Custom | Three.js origami viewer (static files) |
-
-**Important:** HTTP `/reset` and `/step` are stateless — each creates a fresh env.
-For multi-step episodes, use WebSocket `/ws`. This is OpenEnv's design.
-
-### WebSocket Message Format
-
+**Known solution FOLD data:**
 ```json
-// Client → Server (reset)
-{"type": "reset", "task_name": "solar_panel"}
-
-// Client → Server (step)
 {
-  "type": "step",
-  "action": {
-    "fold_type": "valley",
-    "fold_line": {"start": [0, 0.5], "end": [1, 0.5]},
-    "fold_angle": 180,
-    "layer_select": "all"
-  }
+  "vertices_coords": [[0,0], [1,0], [1,1], [0,1]],
+  "edges_vertices": [[0,1], [1,2], [2,3], [3,0], [0,2]],
+  "edges_assignment": ["B", "B", "B", "B", "V"],
+  "edges_foldAngle": [0, 0, 0, 0, 180]
 }
+```
 
-// Server → Client (observation)
-{
-  "type": "observation",
-  "data": {
-    "observation": {
-      "task": {"name": "solar_panel", ...},
-      "paper_state": {
-        "vertices_coords": [[0,0,0], [1,0,0], ...],
-        "edges_vertices": [[0,1], ...],
-        "edges_assignment": ["B", "V", ...],
-        "strain_per_vertex": [0.001, ...],
-        ...
-      },
-      "metrics": {"compactness": 0.45, ...},
-      "fold_history": [...],
-      "error": null
+One valley fold along the diagonal. creasePercent=1.0 folds it into a triangle.
+The LLM needs to discover this crease pattern. That's the training signal.
+
+**Progression:**
+1. Triangle (1 fold) — learn the format, learn what a valley fold does
+2. Half fold (1 fold) — horizontal/vertical line
+3. Quarter fold (2 folds) — two perpendicular folds
+4. Letter fold (2 parallel folds) — tri-fold
+5. More complex patterns as the model improves
+
+---
+
+## 6. Physics Engine (Python, Server-Side)
+
+For RL training, we need a Python physics engine that takes FOLD data and
+produces final 3D positions. This runs headless — no rendering.
+
+### What It Does
+
+```python
+def simulate(fold_data: dict, crease_percent: float = 1.0) -> np.ndarray:
+    """
+    Take FOLD crease pattern, run bar-and-hinge physics,
+    return final 3D vertex positions.
+
+    Args:
+        fold_data: FOLD format dict (vertices, edges, assignments, angles)
+        crease_percent: 0.0 = flat, 1.0 = fully folded
+
+    Returns:
+        positions: (N, 3) array of final vertex positions
+    """
+    # 1. Build nodes, beams, creases from FOLD data
+    # 2. Set target angles: targetTheta = foldAngle × crease_percent
+    # 3. Run Verlet integration until convergence
+    # 4. Return final positions
+```
+
+### Forces (matching OrigamiSimulator)
+
+| Force | Formula | Purpose |
+|---|---|---|
+| Beam (axial) | `F = -(K/L)(len - L₀) × direction` | Prevent stretching |
+| Crease (torsional) | `τ = K × L × (θ_target × cp - θ_current)` | Drive folding |
+| Face stiffness | `F = K_face × (angle - angle₀)` per triangle angle | Prevent collapse |
+| Damping | `D = 0.45 × 2√(K × m_min)` per beam | Remove oscillation |
+
+### Parameters (matching OrigamiSimulator defaults)
+
+```python
+DEFAULTS = {
+    "axial_stiffness": 20,
+    "crease_stiffness": 0.7,
+    "panel_stiffness": 0.7,
+    "face_stiffness": 0.2,
+    "damping_ratio": 0.45,
+    "density": 1.0,
+}
+```
+
+### Convergence
+
+Run solver until energy delta < threshold or max iterations reached.
+For simple folds (triangle, half fold), convergence is fast (~200 steps).
+
+---
+
+## 7. Target Shapes: How We Define Them
+
+Each task has a **target**: the known-good folded shape.
+
+### Option A: Reference FOLD File (Preferred)
+
+We have the solved FOLD file. We simulate it ourselves to get target positions.
+The LLM's job is to discover the same (or equivalent) crease pattern.
+
+```python
+TASKS = {
+    "triangle": {
+        "description": "Fold the paper into a triangle",
+        "paper": {"width": 1.0, "height": 1.0},
+        "target_fold": {
+            "vertices_coords": [[0,0], [1,0], [1,1], [0,1]],
+            "edges_vertices": [[0,1], [1,2], [2,3], [3,0], [0,2]],
+            "edges_assignment": ["B", "B", "B", "B", "V"],
+            "edges_foldAngle": [0, 0, 0, 0, 180],
+        },
+        "max_vertices": 10,
+        "max_edges": 15,
     },
-    "reward": null,
-    "done": false
-  }
 }
 ```
 
----
+### Option B: 3D Point Cloud / Mesh
 
-## 13. Deployment
+For complex shapes where multiple crease patterns could work,
+define the target as a 3D point cloud or mesh silhouette.
+Reward = how close the folded shape's silhouette/volume matches.
 
-### Push to HF Spaces
+### Viewer: Target Shape Overlay
 
-```bash
-cd origami_env/
-huggingface-cli login
-openenv push --repo-id <username>/origami-env
-```
-
-`openenv push` does:
-1. Validates `openenv.yaml`
-2. Moves `server/Dockerfile` → root `Dockerfile`
-3. Injects `ENV ENABLE_WEB_INTERFACE=true`
-4. Adds HF Space frontmatter to README
-5. Uploads to HF Spaces (Docker SDK)
-
-### Or manually via Docker
-
-```bash
-docker build -t origami-env -f server/Dockerfile .
-docker run -p 8000:8000 origami-env
-curl http://localhost:8000/health
-# Open http://localhost:8000/viewer in browser → Three.js origami viewer
-```
-
-### HF Space README header
-
-```yaml
----
-title: Origami RL Environment
-sdk: docker
-app_port: 8000
-base_path: /web
-tags:
-  - openenv
----
-```
+In the detail page, the target shape renders as a **ghost wireframe** (transparent,
+dashed edges) overlaid on the 3D view. The LLM's folded result renders solid
+on top. You can visually see how close they match — like AlphaFold's predicted
+vs actual structure overlay.
 
 ---
 
-## 14. What's Already Implemented vs TODO
+## 8. Iterative FOLD Generation (Advanced)
 
-### DONE (engine + server + client)
+The LLM can also build the crease pattern step-by-step:
 
-- [x] `engine/paper.py` — PaperState, create_flat_sheet, FOLD I/O
-- [x] `engine/fold.py` — apply_fold with full 10-step pipeline
-- [x] `engine/physics.py` — Bar-and-hinge Verlet solver (stabilized)
-- [x] `engine/validation.py` — Kawasaki, Maekawa, self-intersection
-- [x] `engine/metrics.py` — 20+ metrics computation
-- [x] `engine/materials.py` — 4 material presets
-- [x] `models.py` — OpenEnv Action/Observation/State subclasses
-- [x] `origami_environment.py` — Environment subclass with reset/step/state
-- [x] `tasks.py` — 7 tasks across 4 difficulty levels
-- [x] `app.py` — create_app() integration
-- [x] `client/client.py` — EnvClient subclass
-- [x] `client/reward_functions.py` — GRPO reward functions
-- [x] `renderer/exporter.py` — FOLD JSON + OBJ export
-- [x] `openenv.yaml`, `pyproject.toml`, `Dockerfile`
-- [x] `server/training_broadcast.py` — TrainingBroadcastServer with episode registry
-- [x] `training/runner.py` — Parallel episode executor with broadcast hooks
-- [x] `viewer/training.html` — Training grid viewer with mini Three.js renderers
+```
+Step 1: Start with boundary (4 vertices, 4 edges, all "B")
+Step 2: Add vertex at (0.5, 0.5), add edge [0, 4] as "V" at 180°
+Step 3: Add edge [4, 2] as "V" at 180° → completes diagonal crease
+Step 4: "done"
+```
 
-### TODO
+Each step adds to the FOLD data. The physics runs after the final step.
+This gives more training signal (partial rewards for partial progress)
+and mirrors how a human designer thinks — adding creases one at a time.
 
-- [x] Remove matplotlib rendering (render_2d, render_3d, screenshots, recorder)
-- [x] Remove render_urls from OrigamiObservation
-- [x] Remove matplotlib/Pillow/imageio from requirements.txt
-- [x] Update origami_environment.py to not call capture_step()
-- [x] Build Three.js viewer (`viewer/index.html`)
-- [x] Update Dockerfile to copy viewer/
-- [x] Write `training/train_grpo.py` (2048 pattern)
-- [x] Test openenv validate (passes: "Ready for multi-mode deployment")
+**But we start with single-shot generation.** Iterative is Phase 2.
 
 ---
 
-## 15. Training Grid Viewer — Live Spectator for RL Training
-
-### 15.1 Concept
-
-During GRPO training, the trainer generates G completions (strategies) per prompt.
-Each strategy runs a full episode (reset → fold → fold → ... → stop).
-The **Training Grid Viewer** shows ALL G episodes simultaneously as a live grid:
+## 9. Repository Structure
 
 ```
-┌──────────┬──────────┬──────────┬──────────┐
-│  EP 1    │  EP 2    │  EP 3    │  EP 4    │  G=4 strategies
-│  [3D]    │  [3D]    │  [3D]    │  [3D]    │  each cell = mini
-│  📄 fold │  📄 fold │  ✅ done │  📄 fold │  Three.js renderer
-│  step 2  │  step 5  │  r=20.0  │  step 3  │  + status badge
-│  c=0.31  │  c=0.52  │  c=0.85  │  c=0.28  │  + key metrics
-└──────────┴──────────┴──────────┴──────────┘
-              ↓ click EP 2
-┌────────────────────────────────────────────┐
-│            EP 2 — FULLSCREEN               │
-│   [2D crease]          [3D folded mesh]    │
-│   Full metrics dashboard                   │
-│   Fold history list                        │
-│   [Back to Grid]                           │
-└────────────────────────────────────────────┘
-
-Training ends → grid clears → switches to regular /viewer for demo
-```
-
-### 15.2 Why This Works (Not Computationally Complex)
-
-| Concern | Reality |
-|---------|---------|
-| Server CPU | Each episode = pure math (36 vertices, 50 faces). G=8 episodes ~0.8ms total |
-| Network | Each observation ~3KB JSON. G=8 × 20 steps = ~480KB per prompt. Negligible |
-| Browser GPU | G=8 mini renderers × 36 vertices = 288 vertices total. A game does 100K+ |
-| Browser memory | 8 Three.js scenes ≈ 10MB. Tab uses 200MB baseline. Trivial |
-| WebGL contexts | Browsers support 8-16 active contexts. G=8 fits. G>8 → use single canvas with viewports |
-
-### 15.3 Architecture
-
-```
-COLAB (Training Process)
-┌──────────────────────────────────────────────────────┐
-│                                                      │
-│  GRPOTrainer generates G completions per prompt      │
-│       ↓                                              │
-│  TrainingRunner (new)                                │
-│  ┌──────────────────────────────────────────────┐   │
-│  │  For each completion (can run parallel):      │   │
-│  │    env = OrigamiEnvironment()  ← in-process   │   │
-│  │    obs = env.reset()                          │   │
-│  │    broadcast(ep_id, obs) ───────────────────┐ │   │
-│  │    while not done:                          │ │   │
-│  │      fold = strategy(paper_state)           │ │   │
-│  │      obs = env.step(action)                 │ │   │
-│  │      broadcast(ep_id, obs) ─────────────────┤ │   │
-│  │    score = compute_reward(obs.metrics)       │ │   │
-│  │    broadcast(ep_id, {done, score}) ─────────┤ │   │
-│  └──────────────────────────────────────────────┘ │   │
-│       │                                           │   │
-│       ▼                                           │   │
-│  TrainingBroadcastServer (new, same FastAPI)      │   │
-│  ┌────────────────────────────────────────────┐   │   │
-│  │  /ws/training  ← viewers connect here      │   │   │
-│  │                                            │   │   │
-│  │  episode_registry: {                       │   │   │
-│  │    ep_id → {status, obs, score, task}      │   │   │
-│  │  }                                         │   │   │
-│  │                                            │◀──┘   │
-│  │  On update: broadcast to all viewers       │       │
-│  │  On viewer connect: send full registry     │       │
-│  └────────────────────────────────────────────┘       │
-│                                                      │
-└──────────────────────────────────────────────────────┘
-         │ WebSocket
-         ▼
-BROWSER (Training Grid Viewer)
-┌──────────────────────────────────────────────────────┐
-│  /viewer/training.html                               │
-│                                                      │
-│  Connects to /ws/training                            │
-│  Receives: {type, episode_id, observation, status}   │
-│                                                      │
-│  ┌────────────────────────────────────────────────┐  │
-│  │  CSS Grid: auto-fit, minmax(250px, 1fr)        │  │
-│  │  Each cell:                                    │  │
-│  │    - Mini Three.js scene (3D mesh only)        │  │
-│  │    - Status badge: 🔄 running / ✅ done / ❌    │  │
-│  │    - Key metrics: compactness, folds, reward   │  │
-│  │    - Click → fullscreen (same as /viewer)      │  │
-│  └────────────────────────────────────────────────┘  │
-│                                                      │
-│  Header: training progress, batch #, avg reward      │
-│  Auto-resize: G=4 → 2×2, G=8 → 4×2, G=16 → 4×4    │
-│  Episode lifecycle:                                  │
-│    new → animate in (fade) → running (blue border)   │
-│    → done+good (green) / done+bad (red)              │
-│    → next batch → clear + new episodes               │
-└──────────────────────────────────────────────────────┘
-```
-
-### 15.4 Key Design Decision: In-Process Envs, Not HTTP
-
-During training, the reward function does NOT call the HTTP server.
-It instantiates `OrigamiEnvironment()` directly in Python — zero network overhead.
-The broadcast is one-way: training process → viewers. Viewers are read-only spectators.
-
-```python
-# Training runs G episodes in-process (fast)
-env = OrigamiEnvironment()
-obs = env.reset(task_name="half_fold")
-
-# After each step, push observation to broadcast queue (async, non-blocking)
-broadcast_queue.put_nowait({"episode_id": ep_id, "observation": obs.model_dump()})
-
-# Separate asyncio task drains queue → pushes to viewer WebSockets
-```
-
-This means:
-- Training speed is NOT affected by viewers (broadcast is fire-and-forget)
-- Viewers can connect/disconnect freely without impacting training
-- If no viewers are connected, observations are simply dropped (no queue buildup)
-
-### 15.5 WebSocket Protocol: `/ws/training`
-
-```
-Viewer → Server:
-  (no messages — viewer is read-only spectator)
-
-Server → Viewer (on connect):
-  {
-    "type": "registry",
-    "batch_id": 12,
-    "episodes": {
-      "ep_abc": {"status": "running", "task": "half_fold", "step": 3,
-                 "observation": {...}, "metrics": {...}},
-      "ep_def": {"status": "done", "task": "half_fold", "step": 5,
-                 "observation": {...}, "metrics": {...}, "score": 20.0},
-      ...
-    }
-  }
-
-Server → Viewer (on episode update):
-  {
-    "type": "episode_update",
-    "episode_id": "ep_abc",
-    "step": 4,
-    "status": "running",
-    "observation": {
-      "paper_state": {...},   ← Three.js renders this
-      "metrics": {...},
-      "fold_history": [...]
-    }
-  }
-
-Server → Viewer (on episode complete):
-  {
-    "type": "episode_done",
-    "episode_id": "ep_abc",
-    "status": "success",       ← or "timeout", "error"
-    "score": 20.0,
-    "final_metrics": {...}
-  }
-
-Server → Viewer (on new batch):
-  {
-    "type": "batch_start",
-    "batch_id": 13,
-    "num_episodes": 4,
-    "prompt_index": 42
-  }
-
-Server → Viewer (on batch complete):
-  {
-    "type": "batch_done",
-    "batch_id": 13,
-    "scores": [20.0, 5.0, 2.0, -1.0],
-    "best_episode_id": "ep_xyz",
-    "avg_score": 6.5
-  }
-
-Server → Viewer (on training end):
-  {
-    "type": "training_done",
-    "total_batches": 100,
-    "best_score": 20.0
-  }
-```
-
-### 15.6 New Files Needed
-
-```
-origami_env/
-├── server/
-│   ├── app.py                      # UPDATE: mount training.html, add /ws/training
-│   └── training_broadcast.py       # NEW: TrainingBroadcastServer class
-│       - episode_registry: Dict[str, EpisodeInfo]
-│       - spectator_clients: List[WebSocket]
-│       - publish(episode_id, data) → broadcast to all spectators
-│       - connect_spectator(ws) → send registry snapshot
-│       - disconnect_spectator(ws)
-│       - clear_batch() → reset registry for next batch
+origami/
+├── app/                                # Frontend (Next.js or plain HTML)
+│   ├── page.tsx                        # Grid homepage
+│   ├── fold/[id]/page.tsx              # Detail page (simulator view)
+│   ├── components/
+│   │   ├── FoldCard.tsx                # Grid card (mini 3D preview)
+│   │   ├── CreasePattern2D.tsx         # 2D crease pattern (SVG/Canvas)
+│   │   ├── FoldViewer3D.tsx            # 3D mesh viewer (Three.js)
+│   │   ├── TargetOverlay.tsx           # Ghost wireframe target shape
+│   │   ├── CreaseSlider.tsx            # creasePercent slider
+│   │   └── MetricsBar.tsx              # Shape match, folds, strain
+│   └── lib/
+│       ├── fold-parser.ts              # FOLD JSON → Three.js geometry
+│       ├── physics-client.ts           # Optional: browser-side physics
+│       └── three-setup.ts             # Scene, camera, lights, controls
 │
-├── training/
-│   ├── train_grpo.py               # UPDATE: integrate TrainingRunner
-│   └── runner.py                   # NEW: parallel episode executor with broadcast
-│       - run_episode(strategy_fn, task, broadcast_fn) → score
-│       - run_batch(strategies: List, broadcast_fn) → scores
-│       - Uses ThreadPoolExecutor for G parallel episodes
-│       - Each step calls broadcast_fn(ep_id, obs)
+├── server/                             # Python backend
+│   ├── engine/
+│   │   ├── simulate.py                 # Bar-and-hinge solver (CPU, numpy)
+│   │   ├── fold_parser.py              # FOLD JSON validation + loading
+│   │   ├── shape_match.py              # Chamfer distance, shape similarity
+│   │   └── materials.py                # Stiffness parameters
+│   ├── environment.py                  # OpenEnv Environment subclass
+│   ├── models.py                       # Action (FOLD JSON), Observation, State
+│   ├── tasks.py                        # Task definitions + target shapes
+│   ├── app.py                          # FastAPI server
+│   └── Dockerfile
 │
-└── viewer/
-    ├── index.html                  # UNCHANGED — single session demo viewer
-    └── training.html               # NEW — training grid viewer
-        - CSS grid layout (auto-fit columns)
-        - Mini Three.js renderer per episode cell
-        - Status badges + key metrics per cell
-        - Click-to-fullscreen with [Back to Grid] button
-        - Training progress header bar
-        - Auto-clear on batch_start, auto-populate on episode_update
+├── training/                           # GRPO training (Colab)
+│   ├── train_grpo.py                   # GRPOTrainer setup
+│   └── reward.py                       # shape_similarity reward function
+│
+├── assets/                             # Reference patterns (from OrigamiSimulator)
+│   ├── targets/                        # Target FOLD files for each task
+│   │   ├── triangle.fold
+│   │   ├── half_fold.fold
+│   │   └── ...
+│   └── examples/                       # OrigamiSimulator demo patterns
+│
+└── research/
+    └── plan/
+        └── openenv_arch.md             # This file
 ```
 
-### 15.7 Changes to Existing Files
+### What's NOT Here Anymore
 
-**`server/app.py`** — Add training broadcast endpoint:
-```python
-from .training_broadcast import TrainingBroadcastServer
-
-broadcast = TrainingBroadcastServer()
-
-@app.websocket("/ws/training")
-async def training_ws(websocket):
-    await broadcast.connect_spectator(websocket)
-
-# Mount training viewer
-app.mount("/viewer", StaticFiles(directory=viewer_dir, html=True), name="viewer")
-# training.html served at /viewer/training.html automatically
-```
-
-**`training/train_grpo.py`** — Add broadcast hook to fold_quality:
-```python
-from origami_env.server.training_broadcast import TrainingBroadcastServer
-
-# In fold_quality reward function:
-# After each env.step(), call:
-#   broadcast.publish(episode_id, obs)
-# This is fire-and-forget; if no viewers, it's a no-op
-```
-
-### 15.8 Grid Viewer Rendering Strategy
-
-For G ≤ 8: **One WebGL context per cell**
-- Each cell gets a small Three.js renderer (250×200px)
-- 8 contexts × 36 vertices = trivial
-- Orbit controls disabled in grid (too small), enabled in fullscreen
-
-For G > 8 (unlikely but handled): **Single canvas with viewport splitting**
-- One large Three.js renderer
-- Use `renderer.setScissor()` + `renderer.setViewport()` per cell
-- Render each scene into its own region
-- More efficient, one WebGL context
-
-**Fullscreen transition:**
-```
-Click cell → CSS class "fullscreen" on that cell
-  → cell expands to 100vw × 100vh (CSS transition)
-  → renderer.setSize(window.innerWidth, window.innerHeight)
-  → show 2D crease panel + full metrics (hidden in grid mode)
-  → show [Back to Grid] button
-Click [Back to Grid] → remove "fullscreen" class → shrink back
-```
-
-### 15.9 Episode Cell Layout (Grid Mode)
-
-```
-┌─────────────────────────┐
-│ EP abc  🔄 running      │  ← header: ID + status badge
-│ ┌─────────────────────┐ │
-│ │                     │ │
-│ │   Mini 3D Mesh      │ │  ← Three.js renderer (~200px tall)
-│ │   (strain colors)   │ │
-│ │                     │ │
-│ └─────────────────────┘ │
-│ step 3 │ c=0.52 │ ✓     │  ← footer: step count, compactness, valid
-└─────────────────────────┘
-```
-
-### 15.10 TODO
-
-- [x] Create `server/training_broadcast.py` (broadcast server + episode registry)
-- [x] Create `training/runner.py` (parallel episode executor with broadcast hooks)
-- [x] Create `viewer/training.html` (grid viewer with mini Three.js renderers)
-- [x] Update `server/app.py` (add `/ws/training` endpoint, mount training viewer)
-- [x] Update `training/train_grpo.py` (integrate runner + broadcast + demo mode)
-- [x] Test: G=4 parallel episodes — scores=[19.5, -9.7, -0.5, -5.0] ✓
-- [x] Test: /ws/training endpoint registered, training.html served ✓
-- [x] Test: registry snapshot has 4 episodes after batch ✓
-- [x] Test: live WebSocket broadcast — 22 msgs, all 8 types, 4 resets, 9 updates, 4 dones ✓
-- [x] Test: fullscreen toggle — code review verified: click→openFullscreen, Back/Esc→close, 2D+3D+metrics render
+| Removed | Why |
+|---|---|
+| `renderer/` (render_2d, render_3d, screenshots, recorder) | Browser renders via Three.js |
+| `client/reward_functions.py` (code_valid, no_cheating, fold_quality) | Single reward: shape_similarity |
+| `engine/fold.py` (topology-modifying apply_fold) | No topology changes — fixed crease pattern |
+| `engine/validation.py` (Kawasaki, Maekawa) | Not needed when LLM generates full pattern |
+| `engine/metrics.py` (20+ metrics) | One metric: shape similarity |
+| `training/runner.py` (parallel episode executor) | Simpler: just simulate + score |
+| `viewer/training.html` (training grid) | Grid is the homepage now |
+| `training_broadcast.py` (websocket broadcast) | Not needed for single-shot eval |
+| matplotlib, Pillow, imageio deps | Never needed |
 
 ---
 
-## 16. Deep Research: OrigamiSimulator Alignment Analysis
+## 10. OpenEnv Integration
 
-### 16.1 FUNDAMENTAL FINDING: Two Different Folding Paradigms
+### Models
 
-**OrigamiSimulator (physics-driven)**:
-1. Load crease pattern (SVG/FOLD) — all vertices start flat
-2. Set target fold angles for each crease edge
-3. Animate `creasePercent` from 0 → 1
-4. Physics simulation (bar-and-hinge) drives vertices toward folded state
-5. **Never modifies topology** — no new vertices/edges/faces created
+```python
+class OrigamiAction(Action):
+    """LLM submits a FOLD crease pattern."""
+    fold_data: Dict[str, Any]    # FOLD format JSON
+    # {
+    #   "vertices_coords": [[x,y], ...],
+    #   "edges_vertices": [[v1,v2], ...],
+    #   "edges_assignment": ["B","M","V",...],
+    #   "edges_foldAngle": [0, -180, 180, ...],
+    # }
 
-**Our system (geometry-driven)**:
-1. Start with flat sheet
-2. LLM generates a fold action (fold line + angle)
-3. `apply_fold()` splits faces at fold line, inserts vertices/edges, rotates via quaternion
-4. Physics `simulate()` runs after each fold to settle
-5. **Modifies topology** every fold — new vertices, edges, faces
+class OrigamiObservation(Observation):
+    """Result of simulating the crease pattern."""
+    task: Dict[str, Any]                    # Task description + target info
+    fold_data: Dict[str, Any]               # The submitted crease pattern
+    final_positions: List[List[float]]      # (N,3) after physics simulation
+    target_positions: List[List[float]]     # (N,3) target shape
+    shape_similarity: float                 # 0.0 to 1.0
+    strain: float                           # Max strain in simulation
+    is_stable: bool                         # Did simulation converge?
+    error: Optional[str] = None
 
-**Implication for RL**: Our approach is correct for RL (immediate geometric result of an action).
-But the physics must be good enough that the settled state matches what OrigamiSimulator would produce.
+class OrigamiState(State):
+    task_name: str = ""
+    shape_similarity: float = 0.0
+    is_stable: bool = True
+```
 
-### 16.2 Data Format: SVG Encoding Convention
+### Environment
 
-OrigamiSimulator SVGs encode crease patterns via stroke color + opacity:
+```python
+class OrigamiEnvironment(Environment):
 
-| Stroke Color | Assignment | Fold Convention |
+    def reset(self, task_name=None, **kwargs):
+        self._task = get_task(task_name)
+        # Simulate target to get target_positions
+        self._target_positions = simulate(
+            self._task["target_fold"], crease_percent=1.0
+        )
+        return self._make_observation(fold_data=None, done=False)
+
+    def step(self, action: OrigamiAction, **kwargs):
+        fold_data = action.fold_data
+
+        # Simulate the LLM's crease pattern
+        try:
+            final_positions = simulate(fold_data, crease_percent=1.0)
+            similarity = compute_shape_match(final_positions, self._target_positions)
+            reward = similarity * 20.0
+            is_stable = True
+        except SimulationError as e:
+            final_positions = []
+            similarity = 0.0
+            reward = -2.0
+            is_stable = False
+
+        return OrigamiObservation(
+            done=True,  # single-shot: one action = one episode
+            reward=reward,
+            task=self._task,
+            fold_data=fold_data,
+            final_positions=final_positions,
+            target_positions=self._target_positions,
+            shape_similarity=similarity,
+            strain=max_strain,
+            is_stable=is_stable,
+        )
+```
+
+**Key difference:** Each episode is ONE step. LLM submits crease pattern → simulate → score → done. No multi-step loop.
+
+---
+
+## 11. Open Decisions
+
+### Physics: Server vs Browser
+
+| | Server (Python) | Browser (JS) |
 |---|---|---|
-| `#000000` (black) | B | Boundary |
-| `#FF0000` (red) | M | Mountain: angle = -opacity × 180° |
-| `#0000FF` (blue) | V | Valley: angle = +opacity × 180° |
-| `#00FF00` (green) | C | Cut edge |
-| `#FFFF00` (yellow) | F | Facet/triangulation |
-| `#FF00FF` (magenta) | U | Hinge/unassigned |
+| **For training** | Required. Runs headless on GPU machine. | N/A |
+| **For viewer** | Option: pre-compute frames, send positions per creasePercent | Option: port solver to JS, animate locally |
+| **Latency** | HTTP round-trip per slider position | Instant (local compute) |
+| **Complexity** | Simpler viewer (just renders positions) | More complex viewer (runs physics) |
 
-Example: `<line opacity="0.5" stroke="#0000FF" ...>` = Valley fold at 90° (0.5 × 180)
+**Recommendation:** Server for training. Browser for viewer (harvest OrigamiSimulator's solver approach, simplified CPU version in JS). The viewer physics doesn't need to be GPU-accelerated — our meshes are tiny (4-50 vertices).
 
-### 16.3 Coordinate System Mismatch
+### Frontend Framework
 
-| | OrigamiSimulator | Our System |
+| Option | Pros | Cons |
 |---|---|---|
-| Flat sheet plane | XZ-plane (Y=0) | XY-plane (Z=0) |
-| "Up" axis | Y | Z |
-| Vertex format | `[x, 0, z]` flat | `[x, y, 0]` flat |
-| Three.js mapping | direct | swap Y↔Z |
+| Next.js | Routing, SSR, ecosystem | Heavier setup |
+| Plain HTML + Vite | Minimal, fast, no framework tax | Manual routing |
+| Astro | Static-first, islands architecture | Less common |
 
-**Action needed**: Coordinate swap on FOLD import/export to be compatible.
+For minimalistic design with grid→detail routing, even plain HTML with hash routing works. Next.js if we want it to feel like a proper app.
 
-### 16.4 Physics Gaps (Critical)
+### LLM Output: JSON vs SVG
 
-**Gap 1: Face Stiffness Forces (MISSING)**
-OrigamiSimulator has per-triangle angle preservation forces — each triangle compares its 3 current
-interior angles to nominal (rest) angles and applies restoring forces. This prevents mesh collapse
-and shearing during folding. **We do NOT have this.** Our only face constraint is facet hinges
-(dihedral springs on "F" edges), which is not the same thing.
+LLM could generate FOLD JSON directly, or SVG (which we parse into FOLD).
+JSON is more structured and easier to validate. SVG is more visual and
+the LLM might have better training data for SVG generation.
 
-**Gap 2: Crease Force Distribution**
-Theirs: Forces on the 4 nodes of a crease use proper projection coefficients based on where
-the perpendicular from wing tip lands on the crease edge.
-Ours: Forces on hinge nodes split 50/50, which is less accurate.
+**Start with JSON.** It's unambiguous.
 
-**Gap 3: Adaptive Timestep**
-Theirs: `dt = 0.9 / (2π × maxNaturalFreq)` where freq = `sqrt(K/mass)`.
-Ours: Fixed `dt = 0.005`.
+---
 
-**Gap 4: Beam-Level Velocity Damping**
-Theirs: Each beam has `D = dampingPercent × 2 × sqrt(K × minMass)` — critical damping per beam.
-Ours: Global position-based Verlet damping `(1 - 0.15) × velocity`.
+## 12. Phase Plan
 
-### 16.5 Default Parameters Comparison
+### Phase 1: Triangle Fold (MVP)
 
-| Parameter | OrigamiSimulator | Our System |
-|---|---|---|
-| Axial stiffness | 20 | 70 (scale) |
-| Crease stiffness | 0.7 | 0.7 (scale) |
-| Facet/panel stiffness | 0.7 | 0.2 (scale) |
-| Face stiffness | 0.2 | N/A (missing) |
-| Damping | 0.45 | 0.15 |
-| Steps per frame | 100 | 100 (reduced from 500) |
-| Timestep | adaptive | 0.005 fixed |
+- [ ] Python physics engine (bar-and-hinge, numpy)
+- [ ] Shape similarity reward function (chamfer distance)
+- [ ] Triangle target definition (reference FOLD file)
+- [ ] LLM prompt for FOLD generation
+- [ ] Basic GRPO training loop on Colab
+- [ ] Verify: LLM can discover the diagonal valley fold
 
-### 16.6 FOLD Format Compatibility
+### Phase 2: Viewer
 
-Our `PaperState.from_fold_json()` and `to_fold_json()` are mostly compatible with FOLD spec.
-Issues to address:
-- Y↔Z coordinate swap needed for OrigamiSimulator FOLD files
-- Our null handling for `edges_foldAngle` converts to 0.0 (correct)
-- We compute faces from edges if missing (they require `faces_vertices`)
+- [ ] Three.js viewer harvested from OrigamiSimulator
+- [ ] 2D crease pattern rendering (SVG, color-coded)
+- [ ] 3D mesh rendering (BufferGeometry from FOLD)
+- [ ] creasePercent slider with browser-side physics
+- [ ] Target shape ghost overlay
+- [ ] Grid homepage with cards
+- [ ] Detail page with full simulator view
 
-### 16.7 Action Items (Priority Order)
+### Phase 3: More Tasks
 
-**Phase 1: Verify Data Compatibility**
-- [ ] Load OrigamiSimulator SVG examples into our system (add SVG parser)
-- [ ] Load FOLD exports from OrigamiSimulator and render in our viewer
-- [ ] Verify the crease patterns match visually (2D view)
-- [ ] Fix coordinate system (Y↔Z swap on import)
+- [ ] Half fold, quarter fold, letter fold targets
+- [ ] Task progression / curriculum
+- [ ] Iterative FOLD generation (step-by-step crease pattern building)
 
-**Phase 2: Fix Physics**
-- [ ] Add face stiffness forces (triangle angle preservation) — biggest gap
-- [ ] Fix crease force distribution (proper projection coefficients)
-- [ ] Implement adaptive timestep
-- [ ] Add per-beam velocity damping
-- [ ] Match their default parameters more closely
+### Phase 4: Scale
 
-**Phase 3: Viewer Alignment**
-- [ ] Load static FOLD/SVG files in viewer and verify rendering matches OrigamiSimulator
-- [ ] Show fold animation (creasePercent 0→1) in viewer
-- [ ] Verify strain colors, edge rendering, mesh quality match
+- [ ] Complex targets (crane base, miura-ori)
+- [ ] Multiple materials (different stiffness → different physics)
+- [ ] Dataset of known origami patterns as targets
+- [ ] Deploy to HF Spaces
 
-**Phase 4: RL Environment Alignment**
-- [ ] Ensure environment produces observations that render correctly
-- [ ] Verify that fold operations produce topologically correct FOLD data
-- [ ] Validate that RL-generated folds can be loaded back and viewed
-- [ ] Test: load example → fold → export → reimport → same result
+---
+
+## 13. Reference: OrigamiSimulator Files We'll Use
+
+```
+temp/OrigamiSimulator/
+├── js/
+│   ├── threeView.js          → Three.js scene setup, lighting, camera
+│   ├── model.js              → FOLD → BufferGeometry conversion
+│   ├── pattern.js            → FOLD parsing (processFold function)
+│   ├── node.js               → Vertex representation
+│   ├── beam.js               → Edge constraint
+│   ├── crease.js             → Fold crease constraint
+│   └── controls.js           → Slider binding (creasePercent)
+├── dependencies/
+│   ├── three.min.js          → Three.js library
+│   ├── fold.js               → FOLD format API
+│   ├── earcut.js             → Polygon triangulation
+│   └── TrackballControls.js  → Camera controls
+└── assets/
+    ├── Origami/              → Traditional patterns (targets)
+    ├── Bases/                → Base folds (targets)
+    ├── SimpleFolds/          → Simple patterns (targets)
+    └── Tessellations/        → Tessellation patterns (targets)
+```
+
+---
+
+## 14. Key Insight: Why This Works for RL
+
+The old plan had the LLM generating fold actions (type, line, angle) step by step,
+modifying topology each time. This is hard because:
+- Topology changes are fragile (face splitting, vertex insertion)
+- Multi-step episodes have sparse reward (only at the end)
+- The action space is continuous and poorly defined
+- Physics after topology change is unstable
+
+The new plan has the LLM generating a complete crease pattern. This is better because:
+- **Fixed topology** — physics is stable and well-understood
+- **Single-shot** — dense reward (immediate score after one submission)
+- **Structured output** — FOLD JSON is well-defined, validatable
+- **Proven physics** — OrigamiSimulator's bar-and-hinge works on these exact patterns
+- **Clear target** — shape match is simple, visual, and differentiable
+- **Like AlphaFold** — predict structure, simulate, compare to known truth

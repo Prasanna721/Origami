@@ -1,58 +1,54 @@
-"""Pydantic models: OrigamiAction, OrigamiObservation, OrigamiState.
+"""OpenEnv types for the Origami RL environment.
 
-Subclasses of OpenEnv base types (Action, Observation, State).
+OrigamiAction: LLM submits a FOLD crease pattern.
+OrigamiObservation: Result of simulating that pattern against a target.
+OrigamiState: Internal episode state.
 """
-from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
+from openenv.core import Action, Observation, State
 from pydantic import Field
-from openenv.core.env_server.types import Action, Observation, State
 
 
 class OrigamiAction(Action):
-    """One fold operation. Sent by the client each step."""
+    """LLM submits a FOLD crease pattern as its action.
 
-    fold_type: str = "valley"
-    """'valley' | 'mountain' | 'pleat' | 'crimp' | 'stop'"""
+    The fold_data dict must contain:
+      - vertices_coords: [[x, y], ...] — 2D vertex positions on flat paper
+      - edges_vertices: [[v1, v2], ...] — edge connectivity
+      - edges_assignment: ["B"|"M"|"V", ...] — boundary/mountain/valley
+      - edges_foldAngle: [angle, ...] — target fold angles in degrees
+        (optional — defaults from assignment: M=-180, V=+180, B=0)
+    """
 
-    fold_line: Dict[str, List[float]] = Field(default_factory=lambda: {"start": [0, 0.5], "end": [1, 0.5]})
-    """{'start': [x, y], 'end': [x, y]} — normalized 0-1 coordinates on the sheet."""
-
-    fold_angle: float = 180.0
-    """Degrees, 0-180. 180 = fully folded."""
-
-    layer_select: str = "all"
-    """'all' | 'top' | 'bottom' — which layers to fold."""
+    fold_data: dict[str, Any] = Field(
+        ..., description="FOLD-format crease pattern JSON"
+    )
 
 
 class OrigamiObservation(Observation):
-    """Everything the viewer and the LLM need. Returned by reset() and step().
+    """Result of simulating the LLM's crease pattern.
 
-    No render_urls — paper_state contains all geometry data for Three.js
-    to render directly. During training, reward functions read metrics.
+    Contains everything the viewer and reward function need:
+    - The submitted fold data and simulation results
+    - Target shape for overlay comparison
+    - Shape similarity score (the reward signal)
     """
 
-    # Task description
-    task: Dict[str, Any] = Field(default_factory=dict)
-
-    # Paper state (FOLD-compatible geometry + physics data)
-    paper_state: Dict[str, Any] = Field(default_factory=dict)
-
-    # All computed metrics
-    metrics: Dict[str, Any] = Field(default_factory=dict)
-
-    # History of folds applied
-    fold_history: List[Dict[str, Any]] = Field(default_factory=list)
-
-    # Error message if fold failed
+    task: dict[str, Any] = Field(default_factory=dict)
+    fold_data: dict[str, Any] = Field(default_factory=dict)
+    final_positions: list[list[float]] = Field(default_factory=list)
+    target_positions: list[list[float]] = Field(default_factory=list)
+    shape_similarity: float = 0.0
+    max_strain: float = 0.0
+    is_stable: bool = True
     error: Optional[str] = None
 
 
 class OrigamiState(State):
-    """Server-side episode tracking."""
+    """Internal state for an origami episode."""
 
     task_name: str = ""
-    num_folds_applied: int = 0
-    is_valid: bool = True
-    total_reward: float = 0.0
+    shape_similarity: float = 0.0
+    is_stable: bool = True

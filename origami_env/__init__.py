@@ -1,1 +1,1 @@
-"""Origami RL Environment — OpenEnv compatible."""
+# origami_env — RL environment for origami folding
